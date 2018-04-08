@@ -6,8 +6,6 @@ name = "pypi"
 [dev-packages]
 
 [packages]
-rpyc = "*"
-ipython = "*"
 
 [requires]
 python_version = "2.7"

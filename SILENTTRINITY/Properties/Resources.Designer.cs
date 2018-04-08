@@ -73,16 +73,6 @@ namespace SILENTTRINITY.Properties {
         /// <summary>
         ///   Looks up a localized resource of type System.Byte[].
         /// </summary>
-        internal static byte[] make_lib_archive {
-            get {
-                object obj = ResourceManager.GetObject("make_lib_archive", resourceCulture);
-                return ((byte[])(obj));
-            }
-        }
-        
-        /// <summary>
-        ///   Looks up a localized resource of type System.Byte[].
-        /// </summary>
         internal static byte[] Python {
             get {
                 object obj = ResourceManager.GetObject("Python", resourceCulture);

