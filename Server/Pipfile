@@ -7,7 +7,10 @@ name = "pypi"
 
 [packages]
 rpyc = "*"
-ipython = "*"
+ipython = ">=5"
+netifaces = "*"
+paramiko = "*"
+terminaltables = "*"
 
 [requires]
 python_version = "2.7"
