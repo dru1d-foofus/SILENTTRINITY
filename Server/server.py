@@ -54,7 +54,10 @@ userid_table = {u.id: u for u in users}
 def authenticate(username, password):
     user = username_table.get(username, None)
     if user and safe_str_cmp(user.password.encode('utf-8'), password.encode('utf-8')):
+        logging.debug('Client authenticated successfully')
         return user
+
+    logging.debug('Client failed authentication')
 
 
 def identity(payload):
@@ -172,7 +175,7 @@ class STSessions(STObject):
 
         client_ip, client_port = conn._conn._config['endpoints'][1]
 
-        logging.info("Session {} opened ({}@{}) ({}:{} <- {}:{})".format(
+        status_line = "Session {} opened ({}@{}) ({}:{} <- {}:{})".format(
             uid,
             client_infos.get('user', '?'),
             client_infos.get('hostname', '?'),
@@ -180,9 +183,10 @@ class STSessions(STObject):
             listener_port,
             client_ip,
             client_port)
-        )
 
-        emit('new_session', {'response': client_infos}, broadcast=True)
+        logging.info(status_line)
+
+        emit('new_session', {'data': status_line}, broadcast=True)
 
         self.sessions[uid] = conn
 
@@ -261,7 +265,7 @@ def check_token():
 
 @app.errorhandler(400)
 def invalid_request(error):
-    return make_response(jsonify({'error': 'Invalid request'}), 400)
+    return make_response(jsonify({'error': 'Invalid Request'}), 400)
 
 
 @app.errorhandler(401)
@@ -271,19 +275,19 @@ def access_denied(error):
 
 @app.errorhandler(404)
 def not_found(error):
-    return make_response(jsonify({'error': 'Not found'}), 404)
+    return make_response(jsonify({'error': 'Not Found'}), 404)
 
 
 @socketio.on('sessions')
 @jwt_required()
 def ws_get_sessions(message):
-    emit('response', {'response': sessions})
+    emit('response', {'data': sessions})
 
 
 @socketio.on('listeners')
 @jwt_required()
 def ws_get_listeners(message):
-    emit('response', {'response': listeners})
+    emit('response', {'data': listeners})
 
 #@socketio.on_error_default
 #def default_error_handler(e):
@@ -308,4 +312,4 @@ if __name__ == '__main__':
     sessions = STSessions()
     setattr(STService, 'sessions', sessions)
 
-    socketio.run(app, debug=True, port=5000)
+    socketio.run(app, port=5000)
