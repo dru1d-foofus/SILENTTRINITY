@@ -10,6 +10,7 @@ class Listener:
         self.author = '@byt3bl33d3r'
         self.description = 'ssl listener'
 
+        self.running = False
         self.listener_thread = None
 
         self.options = {
@@ -50,9 +51,10 @@ class Listener:
         )
 
         self.listener_thread = KThread(target=listener.start)
+        self.listener_thread.setDaemon(True)
         self.listener_thread.start()
-
-        logging.info("SSL listener started!")
+        self.running = True
 
     def stop_listener(self):
         self.listener_thread.kill()
+        self.running = False

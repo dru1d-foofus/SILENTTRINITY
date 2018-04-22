@@ -4,13 +4,16 @@ verify_ssl = true
 name = "pypi"
 
 [dev-packages]
+ipython = "*"
 
 [packages]
 rpyc = "*"
-ipython = ">=5"
 netifaces = "*"
 paramiko = "*"
-terminaltables = "*"
+flask = "*"
+flask-socketio = "*"
+eventlet = "*"
+flask-jwt = "*"
 
 [requires]
 python_version = "2.7"

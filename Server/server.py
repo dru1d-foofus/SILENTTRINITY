@@ -1,33 +1,84 @@
 #! /usr/bin/env python2.7
 
+from __future__ import unicode_literals, print_function
 #import rpyc
 #import sys
-import logging
-import json
-import traceback
-import zlib
-import imp
-import marshal
-import sys
-import os
-from terminaltables import AsciiTable
+from flask import Flask, make_response, jsonify, abort, request, session
+from flask_socketio import SocketIO, emit, disconnect
+from flask_jwt import JWT, jwt_required, current_identity
+from flask.json import JSONEncoder
+from werkzeug.security import safe_str_cmp
 from uuid import uuid4
 #import threading
 from rpyc.core import Service
+import flask
+import logging
+import json
+import os
+import imp
+import traceback
+import zlib
+import string
+import random
+#import marshal
+#from IPython import embed
+import sys
 
-from IPython import embed
-from IPython.core.magic import Magics, magics_class, line_magic
-from traitlets.config.loader import Config
-#from IPython.core.autocall import IPyAutocall
-from IPython.terminal.prompts import Prompts, Token
-from IPython.terminal.embed import InteractiveShellEmbed
 
 logging.basicConfig(format="%(asctime)s [%(levelname)s] - %(filename)s: %(funcName)s - %(message)s", level=logging.DEBUG)
 
 
+def gen_secret_key():
+    return ''.join(random.choice(string.ascii_lowercase + string.digits) for x in range(40))
+
+
+class User(object):
+    def __init__(self, id, username, password):
+        self.id = id
+        self.username = username
+        self.password = password
+
+    def __str__(self):
+        return "User(id='%s')" % self.id
+
+
+users = [
+    User(1, 'admin', 'admin'),
+]
+
+
+username_table = {u.username: u for u in users}
+userid_table = {u.id: u for u in users}
+
+
+def authenticate(username, password):
+    user = username_table.get(username, None)
+    if user and safe_str_cmp(user.password.encode('utf-8'), password.encode('utf-8')):
+        return user
+
+
+def identity(payload):
+    user_id = payload['identity']
+    return userid_table.get(user_id, None)
+
+
+class MyJSONEncoder(JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, STObject):
+            return obj.toJson()
+
+        return super(MyJSONEncoder, self).default(obj)
+
+
+app = Flask(__name__)
+app.config['SECRET_KEY'] = gen_secret_key()
+app.config['JWT_AUTH_URL_RULE'] = '/api/auth'
+app.json_encoder = MyJSONEncoder
+jwt = JWT(app, authenticate, identity)
+socketio = SocketIO(app, json=flask.json)
+
+
 class STService(Service):
-    def __init__(self, stsessions):
-        self.stsessions = stsessions
 
     def on_connect(self):
         try:
@@ -55,7 +106,6 @@ class STService(Service):
                 logging.error(traceback.format_exc())
 
             self.execute = self._conn.root.execute
-            self.ps_execute = self._conn.root.ps_execute
             self.register_remote_cleanup = self._conn.root.register_cleanup
             self.unregister_remote_cleanup = self._conn.root.unregister_cleanup
             self.exit = self._conn.root.exit
@@ -66,14 +116,15 @@ class STService(Service):
             self.exposed_stdin = sys.stdin
             self.exposed_stdout = sys.stdout
             self.exposed_stderr = sys.stderr
-            self.stsessions.add_client(self)
+            self.sessions.add_client(self)
 
         except Exception as e:
             logging.error("Caught error when receiving connection: {}".format(e))
             logging.error(traceback.format_exc())
 
     def on_disconnect(self):
-        logging.info("[*] Client disconnected")
+        self.stsessions.remove_client(self)
+        logging.info("Client disconnected")
 
     def exposed_set_modules(self, modules):
         self.modules = modules
@@ -86,63 +137,22 @@ class STService(Service):
         return data
 
 
-class STPrompt(Prompts):
+class STObject(object):
+    def toJson(self):
+        return json.dumps(self.__dict__)
 
-    def __init__(self, shell, **kwargs):
-        Prompts.__init__(self, shell=shell, **kwargs)
-        self.context = []
-
-    def in_prompt_tokens(self, cli=None):
-        if not self.context:
-            return [
-                (Token, "ST"),
-                (Token.Prompt, " > ")
-            ]
-        else:
-            prompt = [(Token, "ST")]
-
-            for status in self.context:
-                prompt.extend([
-                    (Token, "("),
-                    (Token.PromptNum, status),
-                    (Token, ")"),
-                ])
-
-            prompt.append((Token.Prompt, " > "))
-
-            return prompt
-
-    def continuation_prompt_tokens(self, cli=None, width=None):
-        if width is None:
-            width = self._width()
-        return [(Token.Prompt, (' ' * (width - 2)) + u' > '), ]
-
-    def out_prompt_tokens(self):
-        spaces = 0
-        if self.context:
-            spaces = len(self.context) + 2
-
-        return [(Token, " " * spaces + "  "), (Token.Prompt, " > ")]
-
-    def set_context(self, context):
-        self.context = [context]
-
-    def clear_context(self):
-        self.context = []
-
-    def add_context(self, context):
-        self.context.extend(context)
+    def __repr__(self):
+        return self.toJson()
 
 
-@magics_class
-class STSessions(Magics):
-    def __init__(self, shell, **kwargs):
-        Magics.__init__(self, shell=shell, **kwargs)
+class STSessions(STObject):
+    def __init__(self):
         self.sessions = {}
 
     def add_client(self, conn):
+
         """
-        with open('utils/client_initializer.py') as initializer:
+        with open('./utils/client_initializer.py') as initializer:
             conn.execute(
                 'import marshal;exec marshal.loads({})'.format(
                     repr(marshal.dumps(compile(initializer.read(), '<loader>', 'exec')))
@@ -150,56 +160,47 @@ class STSessions(Magics):
             )
         """
 
-        address = conn._conn._config['connid']
-        try:
-            if type(address) is list:
-                address = address[0]
-            address = conn._conn._config['connid'].rsplit(':', 1)[0]
-        except:
-            address = str(address)
-
-        client_ip, client_port = conn._conn._config['connid'].rsplit(':', 1)
         uid = str(uuid4())[:8]
-        logging.info("Session {} opened (user@machine) ({} <- {}:{})".format(uid, address, client_ip, client_port))
+
+        client_infos = conn.get_infos()
+
+        print(client_infos)
+
+        conn._conn._config['connid'] = uid
+
+        listener_addr, listener_port = conn._conn._config['endpoints'][0]
+
+        client_ip, client_port = conn._conn._config['endpoints'][1]
+
+        logging.info("Session {} opened ({}@{}) ({}:{} <- {}:{})".format(
+            uid,
+            client_infos.get('user', '?'),
+            client_infos.get('hostname', '?'),
+            listener_addr,
+            listener_port,
+            client_ip,
+            client_port)
+        )
+
+        emit('new_session', {'response': client_infos}, broadcast=True)
 
         self.sessions[uid] = conn
 
-    def add_context(self, context):
-        self.shell.sessions_shell.prompts.add_context(context)
+    def remove_client(self, conn):
+        client_uid = conn._conn._config['connid']
 
-    @line_magic
-    def show(self, line):
-        table_data = [
-            ['uid']
-        ]
-
+        to_delete = []
         for k, v in self.sessions.iteritems():
-            table_data.append([k])
+            session_uid = v._conn._config['connid']
+            if client_uid == session_uid:
+                to_delete.append(k)
 
-        table = AsciiTable(table_data)
-        table.inner_row_border = True
-        print table.table
-
-    @line_magic
-    def help(self, line):
-        for k in self.magics['line'].keys():
-            print k
-
-    @line_magic
-    def listeners(self, line):
-        self.back(line)
-        self.shell.listeners(line)
-
-    @line_magic
-    def back(self, line):
-        self.shell.sessions_shell.exiter()
+        for session in to_delete:
+            del(self.sessions[session])
 
 
-@magics_class
-class STListeners(Magics):
-    def __init__(self, shell, **kwargs):
-        Magics.__init__(self, shell=shell, **kwargs)
-
+class STListeners(STObject):
+    def __init__(self):
         self.available = []
         self.selected = None
 
@@ -228,103 +229,83 @@ class STListeners(Magics):
             if listener[-3:] == '.py' and listener[:-3] != '__init__':
                 obj = self.load(os.path.join(path, listener))
                 self.available.append(obj)
-                logging.debug("Loaded {} listener".format(obj.name))
 
-    def add_context(self, context):
-        self.shell.listeners_shell.prompts.add_context(context)
+        logging.debug("Loaded {} listener(s) : {}".format(len(self.available), [lst.name for lst in self.available]))
 
-    @line_magic
-    def reload(self):
-        self.scan()
-
-    @line_magic
-    def use(self, line):
-        for listener in self.available:
-            if line.lower() == listener.name.lower():
-                self.add_context(line)
-                self.selected = listener
-                self.shell.listeners_shell.prompts.clear_context()
-                self.shell.listeners_shell.prompts.add_context(['listeners', self.selected.name])
-                return
-
-    @line_magic
-    def set(self, line):
-        if self.selected:
-            name, value = line.split()
-
-            for k, v in self.selected.options.iteritems():
-                if name == k:
-                    v['Value'] = value
-
-    @line_magic
-    def options(self, line):
-        if self.selected:
-            table_data = [
-                ['Name', 'Description', 'Required', 'Value']
-            ]
-
-            for k, v in self.selected.options.iteritems():
-                table_data.append([k, v['Description'], v['Required'], v['Value']])
-
-            table = AsciiTable(table_data)
-            #table.inner_row_border = True
-            print table.table
-
-    @line_magic
-    def back(self, line):
-        self.shell.listeners_shell.exiter()
-
-    @line_magic
-    def show(self, line):
-        return [listener.name for listener in self.available]
-
-    @line_magic
-    def help(self, line):
-        for k in self.magics['line'].keys():
-            print k
-
-    @line_magic
-    def sessions(self, line):
-        self.back(line)
-        self.shell.sessions(line)
+    def toJson(self):
+        return {
+            'available': [{'Name': lstr.name, 'Description': lstr.description} for lstr in self.available],
+            'running': []  # TO DO
+        }
 
 
-@magics_class
-class STShell(Magics):
-    def __init__(self, shell, **kwargs):
-        Magics.__init__(self, shell=shell, **kwargs)
-        self.listeners = STListeners(self)
-        self.sessions = STSessions(self)
-        self.service = STService(self.sessions)
-
-        self.listeners_shell = st_shell(self.listeners)
-        self.sessions_shell = st_shell(self.sessions)
-
-    @line_magic
-    def listeners(self, line):
-        self.listeners_shell.prompts.set_context('listeners')
-        self.listeners_shell()
-        self.listeners_shell.prompts.clear_context()
-
-    @line_magic
-    def sessions(self, line):
-        self.sessions_shell.prompts.set_context('sessions')
-        self.sessions_shell()
-        self.sessions_shell.prompts.clear_context()
-
-    @line_magic
-    def help(self, line):
-        for k in self.magics['line'].keys():
-            print k
+@app.route('/api/listeners', methods=['GET'])
+def get_listeners():
+    return make_response(jsonify({'response': listeners}))
 
 
-def st_shell(magic_class):
-    cfg = Config()
-    ipshell = InteractiveShellEmbed(banner1="", exit_msg="", config=cfg)
-    ipshell.register_magics(magic_class)
-    ipshell.prompts = STPrompt(ipshell)
-    return ipshell
+@app.route('/api/sessions', methods=['GET'])
+def get_sessions():
+    return make_response(jsonify({'response': sessions}))
 
 
-if __name__ == "__main__":
-    st_shell(STShell)()
+# validate API token before every request except for the login URI
+@app.before_request
+def check_token():
+    """
+    Before every request, check if a valid token is passed along with the request.
+    """
+    if request.path != '/api/auth':
+        jwt_required()
+
+
+@app.errorhandler(400)
+def invalid_request(error):
+    return make_response(jsonify({'error': 'Invalid request'}), 400)
+
+
+@app.errorhandler(401)
+def access_denied(error):
+    return make_response(jsonify({'error': 'Access Denied'}), 401)
+
+
+@app.errorhandler(404)
+def not_found(error):
+    return make_response(jsonify({'error': 'Not found'}), 404)
+
+
+@socketio.on('sessions')
+@jwt_required()
+def ws_get_sessions(message):
+    emit('response', {'response': sessions})
+
+
+@socketio.on('listeners')
+@jwt_required()
+def ws_get_listeners(message):
+    emit('response', {'response': listeners})
+
+#@socketio.on_error_default
+#def default_error_handler(e):
+#    logging.error('Error')
+#    print(request.event["message"])  # "my error event"
+#    print(request.event["args"])     # (data,)
+
+
+@socketio.on('connect')
+@jwt_required()
+def connect_handler():
+    logging.info('Client connected: {}'.format(request.sid))
+
+
+@socketio.on('disconnect')
+def disconnect_handler():
+    logging.info('Client disconnected: {}'.format(request.sid))
+
+
+if __name__ == '__main__':
+    listeners = STListeners()
+    sessions = STSessions()
+    setattr(STService, 'sessions', sessions)
+
+    socketio.run(app, debug=True, port=5000)

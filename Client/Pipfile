@@ -1,0 +1,15 @@
+[[source]]
+url = "https://pypi.python.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[dev-packages]
+
+[packages]
+requests = "*"
+"prompt-toolkit-2.0" = {git = "https://github.com/jonathanslenders/python-prompt-toolkit"}
+terminaltables = "*"
+socketIO-client = "*"
+
+[requires]
+python_version = "2.7"

@@ -42,6 +42,7 @@ class Listener:
         self.author = '@byt3bl33d3r'
         self.description = 'ssh listener'
 
+        self.running = False
         self.listener_thread = None
 
         self.options = {
@@ -70,16 +71,22 @@ class Listener:
             }
         }
 
+    def get_option(self, name):
+        return self.options[name]['Value']
+
     def start_listener(self, service):
         listener = ThreadedServer(
             service,
-            hostname=self.options['BindIP']['Value'],
-            port=self.options['Port']['Value'],
+            hostname=self.get_option('BindIP'),
+            port=self.get_option('Port'),
             authenticator=SSHAuthenticator
         )
 
         self.listener_thread = KThread(target=listener.start)
+        self.listener_thread.setDaemon(True)
         self.listener_thread.start()
+        self.running = True
 
     def stop_listener(self):
         self.listener_thread.kill()
+        self.running = False
