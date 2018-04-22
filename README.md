@@ -7,31 +7,26 @@
 A must, would be great to base it off of Cobalt Strike's malleable C2 system.
 
 ## Client/Server architecture & minimalistic GUI
-Since the server's console UI is based off of IPython, we can take advantage of this and create an optional client/server architecture (a.k.a teamserver) using it's kernel.
+~~Since the server's console UI is based off of IPython, we can take advantage of this and create an optional client/server architecture (a.k.a teamserver) using it's kernel.~~
 
-- https://stackoverflow.com/questions/9977446/connecting-to-a-remote-ipython-instance
+Having done some pretty extensive research on this, it seems IPython was just not meant for creating complex CLI's. Thankfully, the actual "bells and whistles" of the IPython interpreter are provided by the `prompt_toolkit` library.
 
-API has changed a bit since that article, from the little reasearch I did it seems that all that is needed server side is:
+I already started re-writing the CLI using it, there are two main downfalls in using `prompt_toolkit`:
 
-```python
-from IPython.kernel import KernelManager
+1. Docs are only available for the bleeding edge version (2.0) which is only on Github and not on PyPi.
+2. Since IPython uses `prompt_toolkit` v1.0, installing v2.0 in the same virtualenv breaks IPython (which means we can't use `embed()` for debugging purposes. *Huge* pain in the ass.)
 
-k = KernelManager()
-k.start_kernel()
 
-k.connection_file  # Generated on the fly, need to supply to client to connect
-```
+Overall though, `prompt_toolkit` provides much greater flexibility.
 
-The beauty of this is, since everyone connecting to this instance would share the same kernel, IPython would implicitly act as a teamserver!
+I also started working on the client/server architecture. Initially, I was just going to go with a standard HTTP REST API using Flask, however, after thinking about some potential use cases and limitations that this would cause I thought it would make more sense to use websockets. This would allow the client to update and receive data in realtime which is pretty bad ass.
 
-You can even connect to it with IPython's/Jupyter's [QT Interface](https://ipython.org/ipython-doc/3/interactive/qtconsole.html), which would give it an insanely cool/minimilistic GUI interface straight out of the box.
-
-I still have to figure out a way of passing the custom magic commands & prompt of the server to the actual kernel, there obviously is a way of doing this, IPython's documentation is *extremely* lackluster when it comes to this feature not suprisingly so some digging will have to be done inside the code.
+Thankfully, Flask already has a [websocket addon package](https://github.com/miguelgrinberg/Flask-SocketIO), which makes this pretty straight forward!
 
 # Pivoting
 RPyc makes this insanely easy https://rpyc.readthedocs.io/en/latest/docs/howto.html#tunneling
 
-# P2P comms 
+# P2P comms
 RPyC to the rescue again https://rpyc.readthedocs.io/en/latest/docs/servers.html#registry-server
 
 Incredibly enough, it **already** has support for [SMB named pipe comms](https://rpyc.readthedocs.io/en/latest/api/core_stream.html#rpyc.core.stream.NamedPipeStream), only problem is that it's current implementation requires pywin32, which is a CPython extension (IronPython can't run those, maybe we can pull of the same API calls with ctypes?).
