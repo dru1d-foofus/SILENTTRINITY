@@ -1,5 +1,6 @@
 import logging
-from utils.helpers import lhost, KThread
+from core.arguments import get_arguments
+from utils.helpers import KThread
 from rpyc.utils.server import ThreadedServer
 from rpyc.utils.authenticators import SSLAuthenticator
 
@@ -12,6 +13,7 @@ class Listener:
 
         self.running = False
         self.listener_thread = None
+        self.args = get_arguments()
 
         self.options = {
             # format:
@@ -25,12 +27,12 @@ class Listener:
             'Host' : {
                 'Description'   :   'Hostname/IP for staging.',
                 'Required'      :   True,
-                'Value'         :   "ssl://{}:{}".format(lhost(), 443)
+                'Value'         :   "ssl://{}:{}".format(self.args.ip, 443)
             },
             'BindIP' : {
                 'Description'   :   'The IPv4/IPv6 address to bind to on the control server.',
                 'Required'      :   True,
-                'Value'         :   '0.0.0.0'
+                'Value'         :   self.args.ip
             },
             'Port' : {
                 'Description'   :   'Port for the listener.',
@@ -39,14 +41,11 @@ class Listener:
             }
         }
 
-    def get_option(self, name):
-        return self.options[name]['Value']
-
     def start_listener(self, service):
         listener = ThreadedServer(
             service,
-            hostname=self.get_option('BindIP'),
-            port=self.get_option('Port'),
+            hostname=self['BindIP'],
+            port=self['Port'],
             authenticator=SSLAuthenticator
         )
 
@@ -58,3 +57,9 @@ class Listener:
     def stop_listener(self):
         self.listener_thread.kill()
         self.running = False
+
+    def __getitem__(self, key):
+        return self.options[key]['Value']
+
+    def __setitem__(self, key, value):
+        self.options[key] = value

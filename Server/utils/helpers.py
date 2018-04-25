@@ -1,8 +1,5 @@
-import socket
 import threading
-import os
 import sys
-import netifaces
 
 
 class KThread(threading.Thread):
@@ -41,47 +38,3 @@ class KThread(threading.Thread):
 
     def kill(self):
         self.killed = True
-
-
-def lhost():
-    """
-    Return the local IP.
-    """
-
-    if os.name != 'nt':
-        import fcntl
-        import struct
-
-        def get_interface_ip(ifname):
-            try:
-                s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-                return socket.inet_ntoa(fcntl.ioctl(
-                    s.fileno(),
-                    0x8915,  # SIOCGIFADDR
-                    struct.pack('256s', str(ifname[:15]))
-                )[20:24])
-            except IOError:
-                return ''
-
-    ip = ''
-
-    try:
-        ip = socket.gethostbyname(socket.gethostname())
-    except socket.gaierror:
-        pass
-    except:
-        print "Unexpected error:", sys.exc_info()[0]
-        return ip
-
-    if (ip == '' or ip.startswith('127.')) and os.name != 'nt':
-        interfaces = netifaces.interfaces()
-        for ifname in interfaces:
-            if "lo" not in ifname:
-                try:
-                    ip = get_interface_ip(ifname)
-                    if ip != "":
-                        break
-                except:
-                    print 'Unexpected error:', sys.exc_info()[0]
-                    pass
-    return ip
