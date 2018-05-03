@@ -1,7 +1,6 @@
 #! /usr/bin/env python2.7
 
 from __future__ import unicode_literals, print_function
-from core.helpers import KThread
 from prompt_toolkit import prompt
 from prompt_toolkit.history import InMemoryHistory
 from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
@@ -11,6 +10,7 @@ from terminaltables import AsciiTable
 from socketIO_client import SocketIO, BaseNamespace
 from requests.exceptions import ConnectionError
 from time import sleep
+import threading
 import argparse
 import inspect
 import requests
@@ -301,7 +301,7 @@ if __name__ == '__main__':
 
     socket = SocketIO(**socketio_args)
 
-    t = KThread(target=socket.wait)
+    t = threading.Thread(target=socket.wait)
     t.setDaemon(True)
     t.start()
 
