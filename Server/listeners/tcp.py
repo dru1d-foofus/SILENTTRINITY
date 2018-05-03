@@ -1,19 +1,14 @@
-import logging
-from core.arguments import get_arguments
-from utils.helpers import KThread
+from core.listener import STListener
+from core.utils.helpers import KThread
 from rpyc.utils.server import ThreadedServer
 
 
-class Listener:
+class Listener(STListener):
     def __init__(self):
+        STListener.__init__(self)
         self.name = 'tcp'
         self.author = '@byt3bl33d3r'
         self.description = 'tcp listener'
-
-        self.running = False
-        self.listener_thread = None
-
-        self.args = get_arguments()
 
         self.options = {
             # format:
@@ -44,21 +39,11 @@ class Listener:
     def start_listener(self, service):
         listener = ThreadedServer(
             service,
-            hostname=self.get_option('BindIP'),
-            port=self.get_option('Port'),
+            hostname=self['BindIP'],
+            port=self['Port'],
         )
 
         self.listener_thread = KThread(target=listener.start)
         self.listener_thread.setDaemon(True)
         self.listener_thread.start()
         self.running = True
-
-    def stop_listener(self):
-        self.listener_thread.kill()
-        self.running = False
-
-    def __getitem__(self, key):
-        return self.options[key]['Value']
-
-    def __setitem__(self, key, value):
-        self.options[key] = value

