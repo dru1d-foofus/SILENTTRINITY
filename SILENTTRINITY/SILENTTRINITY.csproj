@@ -8,9 +8,13 @@
     <OutputType>Exe</OutputType>
     <RootNamespace>SILENTTRINITY</RootNamespace>
     <AssemblyName>SILENTTRINITY</AssemblyName>
-    <TargetFrameworkVersion>v4.6.1</TargetFrameworkVersion>
+    <TargetFrameworkVersion>v4.5</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
+    <IsWebBootstrapper>false</IsWebBootstrapper>
+    <TargetFrameworkProfile />
+    <NuGetPackageImportStamp>
+    </NuGetPackageImportStamp>
     <PublishUrl>publish\</PublishUrl>
     <Install>true</Install>
     <InstallFrom>Disk</InstallFrom>
@@ -23,10 +27,8 @@
     <MapFileExtensions>true</MapFileExtensions>
     <ApplicationRevision>0</ApplicationRevision>
     <ApplicationVersion>1.0.0.%2a</ApplicationVersion>
-    <IsWebBootstrapper>false</IsWebBootstrapper>
     <UseApplicationTrust>false</UseApplicationTrust>
     <BootstrapperEnabled>true</BootstrapperEnabled>
-    <TargetFrameworkProfile />
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
     <PlatformTarget>AnyCPU</PlatformTarget>
@@ -89,11 +91,12 @@
       <DesignTime>True</DesignTime>
       <DependentUpon>Resources.resx</DependentUpon>
     </Compile>
+    <Compile Include="Utils\PPIDSpoof.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="App.config" />
     <EmbeddedResource Include="Resources\Main.py" />
-    <EmbeddedResource Include="Resources\Python.zip" />
+    <EmbeddedResource Include="Resources\stdlib.zip" />
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="Properties\Resources.resx">
@@ -114,10 +117,10 @@
     </BootstrapperPackage>
   </ItemGroup>
   <ItemGroup>
-    <Content Include="Resources\IronPython.dll" />
-    <Content Include="Resources\IronPython.Modules.dll" />
-    <Content Include="Resources\Microsoft.Dynamic.dll" />
-    <Content Include="Resources\Microsoft.Scripting.dll" />
+    <EmbeddedResource Include="Resources\IronPython.dll" />
+    <EmbeddedResource Include="Resources\IronPython.Modules.dll" />
+    <EmbeddedResource Include="Resources\Microsoft.Dynamic.dll" />
+    <EmbeddedResource Include="Resources\Microsoft.Scripting.dll" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

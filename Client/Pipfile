@@ -4,12 +4,13 @@ verify_ssl = true
 name = "pypi"
 
 [dev-packages]
+ipython = "*"
+better-exceptions = "*"
+pylint = "*"
 
 [packages]
-requests = "*"
-"prompt-toolkit-2.0" = {git = "https://github.com/jonathanslenders/python-prompt-toolkit"}
-terminaltables = "*"
-socketIO-client = "*"
+websockets = "*"
+docopt = "*"
 
 [requires]
-python_version = "2.7"
+python_version = "3.6"

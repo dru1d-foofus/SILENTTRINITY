@@ -4,15 +4,13 @@ verify_ssl = true
 name = "pypi"
 
 [dev-packages]
-ipython = "==5.6.0"
+ipython = "*"
+better-exceptions = "*"
+pylint = "*"
 
 [packages]
-rpyc = "*"
-paramiko = "*"
-Flask = "*"
-Flask-SocketIO = "*"
-eventlet = "*"
-Flask-JWT = "*"
+websockets = "*"
+docopt = "*"
 
 [requires]
-python_version = "2.7"
+python_version = "3.6"
