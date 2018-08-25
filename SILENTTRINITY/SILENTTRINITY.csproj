@@ -65,23 +65,14 @@
       <SpecificVersion>False</SpecificVersion>
       <HintPath>Resources\IronPython.Modules.dll</HintPath>
     </Reference>
-    <Reference Include="Microsoft.Dynamic, Version=1.2.0.0, Culture=neutral, PublicKeyToken=7f709c5b713576e1, processorArchitecture=MSIL">
-      <SpecificVersion>False</SpecificVersion>
-      <HintPath>Resources\Microsoft.Dynamic.dll</HintPath>
-    </Reference>
+    <Reference Include="Microsoft.CSharp" />
     <Reference Include="Microsoft.Scripting, Version=1.2.0.0, Culture=neutral, PublicKeyToken=7f709c5b713576e1, processorArchitecture=MSIL">
       <SpecificVersion>False</SpecificVersion>
       <HintPath>Resources\Microsoft.Scripting.dll</HintPath>
     </Reference>
     <Reference Include="System" />
-    <Reference Include="System.Core" />
-    <Reference Include="System.Windows.Forms" />
+    <Reference Include="System.IO.Compression" />
     <Reference Include="System.Xml.Linq" />
-    <Reference Include="System.Data.DataSetExtensions" />
-    <Reference Include="Microsoft.CSharp" />
-    <Reference Include="System.Data" />
-    <Reference Include="System.Net.Http" />
-    <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Program.cs" />
@@ -91,12 +82,12 @@
       <DesignTime>True</DesignTime>
       <DependentUpon>Resources.resx</DependentUpon>
     </Compile>
-    <Compile Include="Utils\PPIDSpoof.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="App.config" />
     <EmbeddedResource Include="Resources\Main.py" />
-    <EmbeddedResource Include="Resources\stdlib.zip" />
+    <EmbeddedResource Include="Resources\dlls.zip" />
+    <None Include="Resources\stdlib.zip" />
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="Properties\Resources.resx">
@@ -117,10 +108,10 @@
     </BootstrapperPackage>
   </ItemGroup>
   <ItemGroup>
-    <EmbeddedResource Include="Resources\IronPython.dll" />
-    <EmbeddedResource Include="Resources\IronPython.Modules.dll" />
-    <EmbeddedResource Include="Resources\Microsoft.Dynamic.dll" />
-    <EmbeddedResource Include="Resources\Microsoft.Scripting.dll" />
+    <None Include="Resources\IronPython.dll" />
+    <None Include="Resources\IronPython.Modules.dll" />
+    <None Include="Resources\Microsoft.Dynamic.dll" />
+    <None Include="Resources\Microsoft.Scripting.dll" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

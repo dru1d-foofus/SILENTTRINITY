@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 
 """
-
-Usage: server.py <host> <password> [-h] [--port <PORT>]
+Usage: server.py <host> <password> [-h] [-v] [--port <PORT>] 
+                [--insecure]
 
 optional arguments:
     -h, --help          Show this help message and exit
     -v, --version       Show version
     -p, --port <PORT>   Port to bind to [default: 5000]
-
+    --insecure          Connect without TLS
 """
 
 import asyncio
@@ -18,17 +18,25 @@ import ssl
 import pathlib
 import websockets
 import signal
+import http
+import hashlib
+from websockets import WebSocketServerProtocol
 from docopt import docopt
-from http import HTTPStatus
+from hmac import compare_digest
 
 logging.basicConfig(format="%(asctime)s [%(levelname)s] - %(filename)s: %(funcName)s - %(message)s", level=logging.DEBUG)
 
+ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+ssl_context.load_cert_chain(
+    pathlib.Path(__file__).with_name('test.pem')
+)
+
 
 class Events:
-    def state_event(self, state):
+    def state(self, state):
         return json.dumps({'type': 'state', **state})
 
-    def users_event(self, users):
+    def users(self, users):
         return json.dumps({'type': 'users', 'count': len(users)})
 
 
@@ -58,8 +66,7 @@ class Users:
         self.users.remove(username)
 
 class TeamServer:
-    def __init__(self, args):
-        self.args = args
+    def __init__(self):
         self.events = Events()
         self.users = Users()
 
@@ -98,24 +105,27 @@ async def handler(websocket, path):
         else:
             logging.debug(f"Received message from '{websocket.remote_address}' path:{path} msg:{msg}")
             await websocket.send(msg)
-            break
 
     #producer_task = asyncio.ensure_future(producer_handler(websocket, path))
 
-#ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-#ssl_context.load_cert_chain(
-#    pathlib.Path(__file__).with_name('key.pem')
-#)
-
-class STWebSocketProtocol(websockets.WebSocketServerProtocol):
+class STWebSocketServerProtocol(WebSocketServerProtocol):
     async def process_request(self, path, request_headers):
-        logging.debug('Hit hook')
-        return None
+        try:
+            authorization_header = request_headers['Authorization']
+            if not compare_digest(authorization_header, teamserver_password):
+                logging.error('Authentication failure!')
+                return http.HTTPStatus.UNAUTHORIZED, [], b'UNAUTHORIZED\n'
+        except KeyError:
+            logging.error('Received handshake with no authorization header')
+            return http.HTTPStatus.FORBIDDEN, [], b'FORBIDDEN\n'
+
+        logging.info('Client authenticated successfully!')
 
 
-async def server(stop, args):
+async def server(stop):
     logging.debug(f"Server started on {args['<host>']}:{args['--port']}")
-    async with websockets.serve(handler, host=args['<host>'], port=int(args['--port']), create_protocol=STWebSocketProtocol): # ssl=ssl_context)
+    async with websockets.serve(handler, host=args['<host>'], port=int(args['--port']), create_protocol=STWebSocketServerProtocol, 
+                                ssl=None if args['--insecure'] else ssl_context):
         await stop
 
 
@@ -123,8 +133,13 @@ if __name__ == '__main__':
     args = docopt(__doc__, version='0.0.1dev')
     loop = asyncio.get_event_loop()
 
+    teamserver_password = hashlib.sha512(args['<password>'].encode()).hexdigest()
+
     stop = asyncio.Future()
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, stop.set_result, None)
 
-    loop.run_until_complete(server(stop, args))
+    if args['--insecure']:
+        logging.warning('SECURITY WARNING: --insecure flag passed, communication between client and server will be in cleartext!')
+
+    loop.run_until_complete(server(stop))

@@ -63,19 +63,9 @@ namespace SILENTTRINITY.Properties {
         /// <summary>
         ///   Looks up a localized resource of type System.Byte[].
         /// </summary>
-        internal static byte[] IronPython {
+        internal static byte[] dlls {
             get {
-                object obj = ResourceManager.GetObject("IronPython", resourceCulture);
-                return ((byte[])(obj));
-            }
-        }
-        
-        /// <summary>
-        ///   Looks up a localized resource of type System.Byte[].
-        /// </summary>
-        internal static byte[] IronPython_Modules {
-            get {
-                object obj = ResourceManager.GetObject("IronPython_Modules", resourceCulture);
+                object obj = ResourceManager.GetObject("dlls", resourceCulture);
                 return ((byte[])(obj));
             }
         }
@@ -86,36 +76,6 @@ namespace SILENTTRINITY.Properties {
         internal static byte[] Main {
             get {
                 object obj = ResourceManager.GetObject("Main", resourceCulture);
-                return ((byte[])(obj));
-            }
-        }
-        
-        /// <summary>
-        ///   Looks up a localized resource of type System.Byte[].
-        /// </summary>
-        internal static byte[] Microsoft_Dynamic {
-            get {
-                object obj = ResourceManager.GetObject("Microsoft_Dynamic", resourceCulture);
-                return ((byte[])(obj));
-            }
-        }
-        
-        /// <summary>
-        ///   Looks up a localized resource of type System.Byte[].
-        /// </summary>
-        internal static byte[] Microsoft_Scripting {
-            get {
-                object obj = ResourceManager.GetObject("Microsoft_Scripting", resourceCulture);
-                return ((byte[])(obj));
-            }
-        }
-        
-        /// <summary>
-        ///   Looks up a localized resource of type System.Byte[].
-        /// </summary>
-        internal static byte[] stdlib {
-            get {
-                object obj = ResourceManager.GetObject("stdlib", resourceCulture);
                 return ((byte[])(obj));
             }
         }

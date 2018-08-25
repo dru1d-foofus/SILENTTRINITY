@@ -4,13 +4,14 @@ verify_ssl = true
 name = "pypi"
 
 [dev-packages]
-ipython = "*"
 better-exceptions = "*"
 pylint = "*"
 
 [packages]
 websockets = "*"
 docopt = "*"
+prompt-toolkit = "*"
+netifaces = "*"
 
 [requires]
-python_version = "3.6"
+python_version = "3.7"
