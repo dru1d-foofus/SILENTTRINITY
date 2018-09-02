@@ -1,36 +1,22 @@
 # SILENTTRINITY
 
+## Requirements
 
-# Roadmap features & Notes
+- TeamServer and Client require Python >= 3.7
+- SILENTTRINITY implant requires .NET >= 4.5
 
-## Modular C2 system
-A must, would be great to base it off of Cobalt Strike's malleable C2 system.
+## Notes
 
-## Client/Server architecture & minimalistic GUI
-~~Since the server's console UI is based off of IPython, we can take advantage of this and create an optional client/server architecture (a.k.a teamserver) using it's kernel.~~
+### .NET runtime support
 
-Having done some pretty extensive research on this, it seems IPython was just not meant for creating complex CLI's. Thankfully, the actual "bells and whistles" of the IPython interpreter are provided by the `prompt_toolkit` library.
+The implant needs .NET 4.5 or greater due to the IronPython DLLs being compiled against .NET 4.0, also there is no ZipArchive .NET library prior to 4.5.
 
-I already started re-writing the CLI using it, there are two main downfalls in using `prompt_toolkit`:
+Reading the source for the [IronPython Compiler](https://github.com/IronLanguages/ironpython2/tree/master/Src/IronPythonCompiler) it seems like we can get around the first issue by directly generating IL code through IKEVM (I still don't understand why this works). However this would require modifying the compiler to generate a completely new EXE stub (definitly feasable, just time consuming to find the proper IKEVM API calls).
 
-1. Docs are only available for the bleeding edge version (2.0) which is only on Github and not on PyPi.
-2. Since IPython uses `prompt_toolkit` v1.0, installing v2.0 in the same virtualenv breaks IPython (which means we can't use `embed()` for debugging purposes. *Huge* pain in the ass.)
+### C2 Comms
 
+Currently the implant only supports C2 over HTTP 1.1, .NET 4.5 seems to have a native WebSocket library which makes implementing a WS C2 channel more than possible.
 
-Overall though, `prompt_toolkit` provides much greater flexibility.
+HTTP/2 support for .NET's `HttpClient` API is in the works, just not yet released.
 
-I also started working on the client/server architecture. Initially, I was just going to go with a standard HTTP REST API using Flask, however, after thinking about some potential use cases and limitations that this would cause I thought it would make more sense to use websockets. This would allow the client to update and receive data in realtime which is pretty bad ass.
-
-Thankfully, Flask already has a [websocket addon package](https://github.com/miguelgrinberg/Flask-SocketIO), which makes this pretty straight forward!
-
-# Pivoting
-RPyc makes this insanely easy https://rpyc.readthedocs.io/en/latest/docs/howto.html#tunneling
-
-# P2P comms
-RPyC to the rescue again https://rpyc.readthedocs.io/en/latest/docs/servers.html#registry-server
-
-Incredibly enough, it **already** has support for [SMB named pipe comms](https://rpyc.readthedocs.io/en/latest/api/core_stream.html#rpyc.core.stream.NamedPipeStream), only problem is that it's current implementation requires pywin32, which is a CPython extension (IronPython can't run those, maybe we can pull of the same API calls with ctypes?).
-
-I'm sure we can base our own off of these:
-- https://github.com/threatexpress/invoke-pipeshell
-- https://github.com/FuzzySecurity/PowerShell-Suite/blob/master/Invoke-SMBShell.ps1
+The stager and teamserver design are very much "future proof" which should make implementing these C2 Channels pretty trivial when the time comes.
