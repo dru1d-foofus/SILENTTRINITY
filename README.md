@@ -20,3 +20,20 @@ Currently the implant only supports C2 over HTTP 1.1, .NET 4.5 seems to have a n
 HTTP/2 support for .NET's `HttpClient` API is in the works, just not yet released.
 
 The stager and teamserver design are very much "future proof" which should make implementing these C2 Channels pretty trivial when the time comes.
+
+### COM Interop
+
+http://ironpython.net/documentation/dotnet/dotnet.html#accessing-python-code-from-other-net-code
+
+Beautiful.
+
+We could possibly leaverage this to use IE's COM object to do C2 ala [WSC2](https://github.com/Arno0x/WSC2)
+
+Also shellcode injection via dynamic Office Macros.
+
+### Python Standard Library
+
+We technically could load/use IronPython's stdlib instead of calling C# APIs but this would require writing some "magic" dependency resolving code. 
+
+Possibly could modify [httpimports](https://github.com/operatorequals/httpimport) to do this automagically.
+
