@@ -3,7 +3,7 @@
 ## Requirements
 
 - TeamServer and Client require Python >= 3.7
-- SILENTTRINITY implant requires .NET >= 4.5
+- SILENTTRINITY C# implant requires .NET >= 4.5
 
 ## Notes
 
