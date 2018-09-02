@@ -23,7 +23,7 @@ The stager and teamserver design are very much "future proof" which should make 
 
 ### COM Interop
 
-http://ironpython.net/documentation/dotnet/dotnet.html#accessing-python-code-from-other-net-code
+http://ironpython.net/documentation/dotnet/dotnet.html#oleautomation-and-com-interop
 
 Beautiful.
 
