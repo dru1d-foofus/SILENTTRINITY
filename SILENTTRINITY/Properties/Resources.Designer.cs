@@ -59,25 +59,5 @@ namespace SILENTTRINITY.Properties {
                 resourceCulture = value;
             }
         }
-        
-        /// <summary>
-        ///   Looks up a localized resource of type System.Byte[].
-        /// </summary>
-        internal static byte[] dlls {
-            get {
-                object obj = ResourceManager.GetObject("dlls", resourceCulture);
-                return ((byte[])(obj));
-            }
-        }
-        
-        /// <summary>
-        ///   Looks up a localized resource of type System.Byte[].
-        /// </summary>
-        internal static byte[] Main {
-            get {
-                object obj = ResourceManager.GetObject("Main", resourceCulture);
-                return ((byte[])(obj));
-            }
-        }
     }
 }

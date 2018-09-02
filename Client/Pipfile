@@ -11,7 +11,7 @@ pylint = "*"
 websockets = "*"
 docopt = "*"
 prompt-toolkit = "*"
-netifaces = "*"
+termcolor = "*"
 
 [requires]
 python_version = "3.7"

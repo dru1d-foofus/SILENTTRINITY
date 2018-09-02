@@ -11,6 +11,8 @@ pylint = "*"
 [packages]
 websockets = "*"
 docopt = "*"
+netifaces = "*"
+quart = "*"
 
 [requires]
 python_version = "3.7"

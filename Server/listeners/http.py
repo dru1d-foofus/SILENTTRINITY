@@ -1,14 +1,12 @@
 from core.listener import STListener
-from core.utils.helpers import KThread
-from rpyc.utils.server import ThreadedServer
 
 
 class Listener(STListener):
     def __init__(self):
         STListener.__init__(self)
-        self.name = 'tcp'
+        self.name = 'https'
         self.author = '@byt3bl33d3r'
-        self.description = 'tcp listener'
+        self.description = 'HTTPS listener'
 
         self.options = {
             # format:
@@ -17,12 +15,12 @@ class Listener(STListener):
             'Name' : {
                 'Description'   :   'Name for the listener.',
                 'Required'      :   True,
-                'Value'         :   'tcp'
+                'Value'         :   'ssl'
             },
             'Host' : {
                 'Description'   :   'Hostname/IP for staging.',
                 'Required'      :   True,
-                'Value'         :   "tcp://{}:{}".format(self.args.ip, 18861)
+                'Value'         :   "https://{}:{}".format(self.args.ip, 443)
             },
             'BindIP' : {
                 'Description'   :   'The IPv4/IPv6 address to bind to on the control server.',
@@ -32,7 +30,7 @@ class Listener(STListener):
             'Port' : {
                 'Description'   :   'Port for the listener.',
                 'Required'      :   True,
-                'Value'         :   18861
+                'Value'         :   443
             }
         }
 
@@ -41,6 +39,7 @@ class Listener(STListener):
             service,
             hostname=self['BindIP'],
             port=self['Port'],
+            authenticator=SSLAuthenticator
         )
 
         self.listener_thread = KThread(target=listener.start)
