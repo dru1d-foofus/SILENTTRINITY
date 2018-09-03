@@ -88,6 +88,9 @@ class Requests(object):
     def get(self, url):
         r = WebRequest.Create(url)
         r.Method = "GET"
+        if self.proxy_aware:
+            r.Proxy = WebRequest.GetSystemWebProxy()
+            r.Proxy.Credentials = CredentialCache.DefaultCredentials
         #r.ContentType = "application/json"
         #r.Accept = "application/json"
 
