@@ -37,3 +37,8 @@ We technically could load/use IronPython's stdlib instead of calling C# APIs but
 
 Possibly could modify [httpimports](https://github.com/operatorequals/httpimport) to do this automagically.
 
+### Inject into unmanaged process
+
+https://www.codeproject.com/Articles/607352/Injecting-Net-Assemblies-Into-Unmanaged-Processes
+
+Oh my...
