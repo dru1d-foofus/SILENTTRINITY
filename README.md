@@ -46,8 +46,6 @@ Possibly could modify [httpimports](https://github.com/operatorequals/httpimport
 https://www.codeproject.com/Articles/607352/Injecting-Net-Assemblies-Into-Unmanaged-Processes
 
 Oh my...
-<<<<<<< Updated upstream
-=======
 
 ### RPC
 
@@ -56,4 +54,3 @@ We might want to implement a fully fledged RPC that proxies objects between C# a
 - https://thrift.apache.org/
 
 - https://pythonhosted.org/Pyro4/pyrolite.html
->>>>>>> Stashed changes

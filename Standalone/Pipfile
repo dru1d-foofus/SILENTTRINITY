@@ -6,6 +6,12 @@ name = "pypi"
 [dev-packages]
 
 [packages]
+netifaces = "*"
+quart = "*"
+docopt = "*"
+termcolor = "*"
+terminaltables = "*"
+prompt-toolkit = "*"
 
 [requires]
-python_version = "2.7"
+python_version = "3.7"
