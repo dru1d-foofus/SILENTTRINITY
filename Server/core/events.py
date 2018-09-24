@@ -1,0 +1,7 @@
+NEW_SESSION = 'new_session'
+NEW_USER = 'new_user'
+SESSION_STAGED = 'session_staged'
+SESSION_CHECK_IN = 'session_checked_in'
+SESSION_RESULTS = 'session_results'
+NEW_LISTENER = 'new_listener'
+SERVER_STATS = 'server_stats'

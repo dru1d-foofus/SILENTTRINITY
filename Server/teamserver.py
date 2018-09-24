@@ -8,7 +8,7 @@ optional arguments:
     -h, --help          Show this help message and exit
     -v, --version       Show version
     -p, --port <PORT>   Port to bind to [default: 5000]
-    --insecure          Connect without TLS
+    --insecure          Start server without TLS
 """
 
 import asyncio
@@ -19,14 +19,19 @@ import pathlib
 import websockets
 import signal
 import http
-import random
 import functools
+import hmac
+import traceback
+from core.events import NEW_SESSION, NEW_USER, SESSION_STAGED, NEW_LISTENER, SERVER_STATS
+from core.eventlistener import ThreadedEventListener
+from core.utils import decode_auth_header
+from core import Users, Listeners, Modules, Sessions
 from websockets import WebSocketServerProtocol
 from docopt import docopt
 from hashlib import sha512
-from hmac import compare_digest
+from typing import Dict, List, Any
 
-logging.basicConfig(format="%(asctime)s [%(levelname)s] - %(filename)s: %(funcName)s - %(message)s", level=logging.DEBUG)
+logging.basicConfig(format="%(asctime)s %(process)d %(threadName)s - [%(levelname)s] %(filename)s: %(funcName)s - %(message)s", level=logging.DEBUG)
 
 ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
 ssl_context.load_cert_chain(
@@ -34,70 +39,69 @@ ssl_context.load_cert_chain(
 )
 
 
-class User:
-    def __init__(self, username, websocket):
-        self.username = username
-        self.websocket = websocket
-
-    async def send(self, message):
-        await self.websocket.send(message)
-    
-    async def disconnect(self):
-        await self.websocket.close()
-
-    def __str__(self):
-        return f"User(username='{self.username}' websocket='{self.websocket}')"
-
-
-class Users:
-    def __init__(self):
-        self.users = set()
-
-    def add(self, username, websocket):
-        self.users.add(User(username, websocket))
-
-    def remove(self, username):
-        self.users.remove(username)
-
-    async def notify(self, message):
-        message = json.dumps({'type': 'message', 'status': 'info', 'text': message})
-        await asyncio.wait([user.send(message) for user in self.users])
-
-
 class TeamServer:
     def __init__(self):
+        self.event_listener = ThreadedEventListener(loop=asyncio.get_running_loop())
+
         self.users = Users()
-        #self.listeners = Listeners()
-        #self.sessions = Sessions()
-        #self.events = Events()
+        self.listeners = Listeners()
+        self.sessions = Sessions(self.listeners)
+
         #self.modules = Modules()
+        #self.events = Events()
 
+        self.event_listener.attach(SESSION_STAGED, self.users.broadcast_message)
+        self.event_listener.attach(NEW_SESSION, self.users.broadcast_message)
+        self.event_listener.attach(NEW_SESSION, self.update_stats)
+        self.event_listener.attach(NEW_LISTENER, self.update_stats)
 
+        self.event_listener.start()
 
-    async def register(self, username, websocket):
-        self.users.add(username, websocket)
-        await self.users.notify(f"User {username} has joined!")
+    async def update_stats(self):
+        stats = {
+            'sessions': len(self.sessions),
+            'listeners': len(self.listeners),
+            'users': len(self.users)
+        }
 
-    def unregister(self, username):
-        self.users.remove(username)
-        #await self.notify()
-    
-    async def server(self, websocket, msg):
-        await websocket.send(json.dumps({'type': 'server', 'shells': random.randint(1, 50), 'listeners': random.randint(1, 50), 'users': random.randint(1, 50)}))
+        await self.users.broadcast_event(SERVER_STATS, stats)
 
-    async def process(self, websocket, message):
+    async def process(self, websocket, message: Dict[str, Any]):
+        # I hate everything in here, but that'll do pig... that'll do...
+        success = True
+
         try:
-            await getattr(self, message['cmd'])(websocket, message['args'])
+            ctx = getattr(self, message['ctx'].lower())
+            try:
+                result = getattr(ctx, message['cmd'])(message['args'], message['data'])
+            except Exception as e:
+                traceback.print_exc()
+                logging.error(f"Exception when executing command {message['cmd']}: {e}")
+                result = {"error": f"Exception when executing command {message['cmd']}: {e}"}
+                success = False
+
         except AttributeError:
-            logging.error(f"Command '{message['cmd']}' not found")
+            traceback.print_exc()
+            logging.error(f"Context {message['cmd']} does not exist")
+            result = {"error": f"Context {message['cmd']} does not exist"}
+
+        await websocket.send(json.dumps({
+                'type': 'command',
+                'ctx': message['ctx'],
+                'name': message['cmd'],
+                'success': success,
+                'result': result
+        }))
 
 
 async def handler(websocket, path, teamserver):
-    username, _ = websocket.request_headers['Authorization'].split(':')
-    ip, _ =  websocket.remote_address
+    username, _ = decode_auth_header(websocket.request_headers)
+    ip, _ = websocket.remote_address
 
-    logging.debug(f"New client connected {username}@{ip}")
-    await teamserver.register(username, websocket)
+    logging.info(f"New client connected {username}@{ip}")
+    await teamserver.users.register(username, websocket)
+    await teamserver.update_stats()
+
     while True:
         try:
             msg = await asyncio.wait_for(websocket.recv(), timeout=20)
@@ -110,12 +114,12 @@ async def handler(websocket, path, teamserver):
             except asyncio.TimeoutError:
                 # No response to ping in 10 seconds, disconnect.
                 logging.debug(f"No pong from {username}@{ip} after 10 seconds, closing connection")
-                #teamserver.unregister(username)
+                teamserver.users.unregister(username)
                 return
 
         except websockets.exceptions.ConnectionClosed:
             logging.debug(f"Connection closed by client")
-            #teamserver.unregister(username)
+            teamserver.users.unregister(username)
             return
 
         else:
@@ -127,14 +131,14 @@ async def handler(websocket, path, teamserver):
 class STWebSocketServerProtocol(WebSocketServerProtocol):
     async def process_request(self, path, request_headers):
         try:
-            username, password_hash = request_headers['Authorization'].split(':')
-            if not compare_digest(password_hash, teamserver_password):
+            username, password_digest = decode_auth_header(request_headers)
+            if not hmac.compare_digest(password_digest, teamserver_digest):
                 logging.error(f"User {username} failed authentication")
                 return http.HTTPStatus.UNAUTHORIZED, [], b'UNAUTHORIZED\n'
         except KeyError:
             logging.error('Received handshake with no authorization header')
             return http.HTTPStatus.FORBIDDEN, [], b'FORBIDDEN\n'
- 
+
         logging.info(f"User {username} authenticated successfully")
 
 
@@ -142,17 +146,21 @@ async def server(stop):
     teamserver = TeamServer()
     bound_handler = functools.partial(handler, teamserver=teamserver)
     logging.debug(f"Server started on {args['<host>']}:{args['--port']}")
-    async with websockets.serve(bound_handler, host=args['<host>'], port=int(args['--port']), 
-                                create_protocol=STWebSocketServerProtocol, 
-                                ssl=None if args['--insecure'] else ssl_context):
-        await stop
 
+    async with websockets.serve(
+        bound_handler,
+        host=args['<host>'],
+        port=int(args['--port']),
+        create_protocol=STWebSocketServerProtocol,
+        ssl=None if args['--insecure'] else ssl_context
+    ):
+        await stop
 
 if __name__ == '__main__':
     args = docopt(__doc__, version='0.0.1dev')
     loop = asyncio.get_event_loop()
 
-    teamserver_password = sha512(args['<password>'].encode()).hexdigest()
+    teamserver_digest = hmac.new(args['<password>'].encode(), msg=b'silenttrinity', digestmod=sha512).hexdigest()
 
     stop = asyncio.Future()
     for sig in (signal.SIGINT, signal.SIGTERM):

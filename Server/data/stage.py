@@ -26,11 +26,14 @@ from IronPython.Hosting import Python
 #DEBUG = True
 #URL =  "https://172.16.164.1/"
 
+
 def urljoin(*args):
     return "/".join(arg.strip("/") for arg in args)
 
+
 class NotSerializable(Exception):
     pass
+
 
 class Serializable(object):
     def __serialize__(self):
@@ -42,6 +45,7 @@ class Serializable(object):
 
         return class_dict
 
+
 class Response(object):
     def __init__(self, response):
         self.text = response
@@ -49,6 +53,7 @@ class Response(object):
 
     def json(self):
         return JavaScriptSerializer().DeserializeObject(self.text)
+
 
 class Requests(object):
     def __init__(self, verify=False, proxy_aware=True, ssl_versions = SecurityProtocolType.Tls11 | SecurityProtocolType.Tls12):
@@ -97,6 +102,7 @@ class Requests(object):
         response = r.GetResponse()
         responseStream = StreamReader(response.GetResponseStream())
         return Response(responseStream.ReadToEnd())
+
 
 class STClient(Serializable):
     def __init__(self):

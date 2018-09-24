@@ -1,5 +1,7 @@
+from core.loader import Loader
 
-class STModule(object):
+
+class Module(object):
     def __init__(self):
         self.name = ''
         self.author = ''
@@ -10,3 +12,9 @@ class STModule(object):
 
     def payload(self):
         pass
+
+
+class Modules(Loader):
+
+    def list(self):
+        return

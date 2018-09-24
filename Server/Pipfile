@@ -5,14 +5,14 @@ name = "pypi"
 
 [dev-packages]
 ipython = "*"
-better-exceptions = "*"
+better_exceptions = "*"
 pylint = "*"
 
 [packages]
 websockets = "*"
 docopt = "*"
 netifaces = "*"
-quart = "*"
+Quart = "*"
 
 [requires]
 python_version = "3.7"
