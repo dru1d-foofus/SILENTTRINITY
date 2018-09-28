@@ -4,10 +4,10 @@ import sys
 import asyncio
 import logging
 import core.state as state
-from core.events import NEW_SESSION, SESSION_STAGED, SESSION_CHECKIN
+from core.events import NEW_SESSION, SESSION_STAGED, SESSION_CHECKIN, JOB_RESULT
 from core.listener import Listener
 from core.session import Session
-from core.utils import get_ipaddress, gen_random_string
+from core.utils import get_ipaddress, gen_random_string, check_valid_guid
 from logging import Formatter
 from io import BytesIO
 from zipfile import ZipFile, ZIP_DEFLATED
@@ -15,6 +15,7 @@ from base64 import b64encode
 from pprint import pprint
 from quart import Quart, Blueprint, request, jsonify, Response
 from quart.logging import default_handler, serving_handler
+
 
 class STListener(Listener):
     def __init__(self):
@@ -73,6 +74,9 @@ class STListener(Listener):
         """
 
         http_blueprint = Blueprint(__name__, 'http')
+        http_blueprint.before_request(self.check_if_naughty)
+        http_blueprint.after_request(self.make_normal)
+
         http_blueprint.add_url_rule('/stage.zip', 'stage', self.stage, methods=['GET'])
         http_blueprint.add_url_rule('/<GUID>', 'first_checkin', self.first_checkin, methods=['POST'])
         http_blueprint.add_url_rule('/<GUID>/jobs', 'jobs', self.jobs, methods=['GET'])
@@ -89,12 +93,24 @@ class STListener(Listener):
         logging.getLogger('quart.serving').setLevel(logging.DEBUG if state.args['--debug'] else logging.ERROR)
 
         self.app.register_blueprint(http_blueprint)
-        self.app.run(host=self['BindIP'], 
-                     port=self['Port'], 
+        self.app.run(host=self['BindIP'],
+                     port=self['Port'],
                      debug=False,
-                     ssl=ssl_context, 
+                     ssl=ssl_context,
                      use_reloader=False,
                      access_log_format='%(h)s %(p)s - - %(t)s statusline: "%(r)s" statuscode: %(s)s responselen: %(b)s protocol: %(H)s')
+
+    async def check_if_naughty(self):
+        try:
+            headers = request.headers['User-Agent'].lower()
+            if 'curl' in headers or 'httpie' in headers:
+                return jsonify({}), 404
+        except KeyError:
+            pass
+
+    async def make_normal(self, response):
+        #response.headers["server"] = "Apache/2.4.35"
+        return response
 
     async def stage(self):
         with open('data/stage.zip', 'rb') as stage_file:
@@ -105,29 +121,28 @@ class STListener(Listener):
             self.dispatch_event(SESSION_STAGED, f'Sending stage ({sys.getsizeof(stage_file)} bytes) ->  {request.remote_addr} ...')
             return Response(stage_file.getvalue(), content_type='application/zip')
 
+    @check_valid_guid
     async def first_checkin(self, GUID):
         data = json.loads(await request.data)
         remote_addr = request.remote_addr
         self.dispatch_event(NEW_SESSION, Session(GUID, remote_addr, data))
         return jsonify({}), 200
 
+    @check_valid_guid
     async def jobs(self, GUID):
         self.app.logger.debug(f"Session {GUID} ({request.remote_addr}) checked in")
-        job  = self.dispatch_event(SESSION_CHECKIN, GUID)
+        job = self.dispatch_event(SESSION_CHECKIN, GUID)
         if job:
-            return jsonify(job)
+            return jsonify(job), 200
 
         self.app.logger.debug(f"No jobs to give {GUID}")
         return jsonify({}), 200
-        #with open('modules/src/job.py', 'rb') as script:
-        #    data = b64encode(script.read()).decode()
-        #    return jsonify({'id': gen_random_string(), 'command': 'run_script', 'args': 'test', 'data': data}), 200
-        
 
+    @check_valid_guid
     async def job_result(self, GUID, job_id):
         self.app.logger.debug(f"Session {GUID} posted results of job {job_id}")
         data = json.loads(await request.data)
-        pprint(data)
+        self.dispatch_event(JOB_RESULT, (GUID, data))
 
         return jsonify({}), 200
 

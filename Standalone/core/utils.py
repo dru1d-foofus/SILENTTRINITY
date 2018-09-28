@@ -5,6 +5,8 @@ from typing import get_type_hints, List, Dict
 from functools import wraps
 from docopt import docopt
 from termcolor import colored
+from quart import jsonify
+from uuid import UUID
 
 
 class CmdError(Exception):
@@ -37,6 +39,17 @@ def command(func):
                     raise NotImplemented(f"Casting for type '{hint}' has not been implemented")
 
         return func(args[0], **validated_args)
+    return wrapper
+
+
+def check_valid_guid(func):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        try:
+            UUID(kwargs["GUID"])
+        except Exception:
+            return jsonify({}), 400
+        return func(*args, **kwargs)
     return wrapper
 
 

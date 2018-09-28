@@ -5,7 +5,7 @@ from queue import Queue, Empty
 from prompt_toolkit.formatted_text import HTML
 from prompt_toolkit.completion import WordCompleter
 from core.utils import command, print_info, print_good
-from core.events import NEW_SESSION, SESSION_STAGED, SESSION_CHECKIN, NEW_JOB
+from core.events import NEW_SESSION, SESSION_STAGED, SESSION_CHECKIN, NEW_JOB, JOB_RESULT
 from core.ipcserver import ipc_server
 from terminaltables import AsciiTable
 
@@ -22,6 +22,7 @@ class Sessions:
         ipc_server.attach(SESSION_STAGED, self.__notify_session_staged)
         ipc_server.attach(SESSION_CHECKIN, self.__session_checked_in)
         ipc_server.attach(NEW_JOB, self.__add_job)
+        ipc_server.attach(JOB_RESULT, self.__job_result)
 
     def __add_session(self, session_obj):
         print_good(f"New session {session_obj.guid} connected! ({session_obj.address})")
@@ -48,6 +49,11 @@ class Sessions:
             if session.guid == guid:
                 session.add_job(job)
 
+    def __job_result(self, result):
+        guid, data = result
+        print_good(f"{guid} returned job result (id: {data['id']})")
+        print(data['result'])
+
     @command
     def list(self, guid: str):
         """
@@ -60,12 +66,13 @@ class Sessions:
         """
 
         table_data = [
-            ["GUID", "Address", "Last Checkin"]
+            ["GUID", "User", "Address", "Last Checkin"]
         ]
         for session in self.sessions:
             table_data.append([
-                session.guid, 
-                session.address, 
+                session.guid,
+                f"*{session.data['username']}@{session.data['domain']}" if session.data['high_integrity'] else f"{session.data['username']}@{session.data['domain']}",
+                session.address,
                 strftime("h %H m %M s %S", gmtime(session.last_check_in()))
             ])
 

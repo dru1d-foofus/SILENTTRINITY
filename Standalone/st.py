@@ -35,8 +35,10 @@ rprompt_style = Style.from_dict({
     'rprompt': 'bg:#ff0066 #ffffff',
 })
 
+
 def bottom_toolbar():
     return HTML(f"(Sessions: {state.SESSIONS} Listeners: {state.LISTENERS})")
+
 
 def get_rprompt(error=False):
     return ' Error ' if error else ''
@@ -88,7 +90,8 @@ class CmdLoop:
                     run_in_terminal(bound_cmd_handler)
                 except AttributeError:
                     print_bad(f"Unknown command '{command[0]}'")
-                    traceback.print_exc()
+                    if args['--debug']:
+                        traceback.print_exc()
                 except DocoptExit as e:
                     print(str(e))
                 except SystemExit:
@@ -111,10 +114,11 @@ class CmdLoop:
 
             self.parse_result(result)
 
+
 if __name__ == "__main__":
 
     codename = "Ánima"
-    version  = "0.0.1dev"
+    version = "0.0.1dev"
 
     banner = f"""
    _____ ______    _______   __________________  _____   ______________  __
@@ -123,7 +127,7 @@ if __name__ == "__main__":
  ___/ // // /___/ /___/ /|  / / /   / / / _, _// // /|  // /  / /     / /
 /____/___/_____/_____/_/ |_/ /_/   /_/ /_/ |_/___/_/ |_/___/ /_/     /_/
 
-                         Codename: {colored(codename, "yellow")} 
+                         Codename: {colored(codename, "yellow")}
                          Version: {colored(version, "yellow")}
 """
     args = docopt(__doc__, version=f"{codename} - {version}")
