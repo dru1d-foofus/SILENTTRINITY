@@ -73,6 +73,8 @@ class STListener(Listener):
         programmatically and pass the classes self object to the routes
         """
 
+        loop = asyncio.get_event_loop()
+
         http_blueprint = Blueprint(__name__, 'http')
         http_blueprint.before_request(self.check_if_naughty)
         http_blueprint.after_request(self.make_normal)
@@ -86,7 +88,6 @@ class STListener(Listener):
         http_blueprint.add_url_rule('/', 'unknown_path', self.unknown_path, defaults={'path': ''})
         http_blueprint.add_url_rule('/<path:path>', 'unknown_path', self.unknown_path, methods=['GET', 'POST'])
 
-        asyncio.set_event_loop(asyncio.new_event_loop())
         self.app = Quart(__name__)
 
         logging.getLogger('quart.app').setLevel(logging.DEBUG if state.args['--debug'] else logging.ERROR)
@@ -98,7 +99,8 @@ class STListener(Listener):
                      debug=False,
                      ssl=ssl_context,
                      use_reloader=False,
-                     access_log_format='%(h)s %(p)s - - %(t)s statusline: "%(r)s" statuscode: %(s)s responselen: %(b)s protocol: %(H)s')
+                     access_log_format='%(h)s %(p)s - - %(t)s statusline: "%(r)s" statuscode: %(s)s responselen: %(b)s protocol: %(H)s',
+                     loop=loop)
 
     async def check_if_naughty(self):
         try:

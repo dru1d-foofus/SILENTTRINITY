@@ -5,12 +5,12 @@ class STModule:
         self.author = '@byt3bl33d3r'
         self.options = {
             'Title': {
-                'Description'   :   'The ShellCommand to execute, including any arguments',
+                'Description'   :   'Window title',
                 'Required'      :   False,
                 'Value'         :   'Pwned'
             },
             'Text': {
-                'Description'   :   'The ShellCommand to execute, including any arguments',
+                'Description'   :   'Window text',
                 'Required'      :   False,
                 'Value'         :   "I'm in your computerz"
             }
